@@ -957,11 +957,11 @@
   }
   function renderizarLugares() {
     $("#lugares-favoritos").innerHTML = lugares.fav.map(function (f, i) {
-      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-fav="' + i + '" title="Ver os postos perto deste lugar"><span class="estrela" aria-hidden="true">' + (f.cnpj ? "⛽" : "★") + '</span>' + esc(f.nome) + '</button>' +
+      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-fav="' + i + '" title="Ver os postos perto deste lugar"><span class="estrela" aria-hidden="true">' + (f.cnpj ? "⛽" : "★") + '</span><span class="lugar-txt">' + esc(f.nome) + '</span></button>' +
         '<button type="button" class="lugar-x" data-del-fav="' + i + '" aria-label="Remover ' + esc(f.nome) + '" title="Remover">&times;</button></div>';
     }).join("");
     $("#lugares-recentes").innerHTML = lugares.rec.map(function (q, i) {
-      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-rec="' + i + '" title="Buscar de novo"><span class="relogio" aria-hidden="true">↺</span>' + esc(q) + '</button>' +
+      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-rec="' + i + '" title="Buscar de novo"><span class="relogio" aria-hidden="true">↺</span><span class="lugar-txt">' + esc(q) + '</span></button>' +
         '<button type="button" class="lugar-x" data-del-rec="' + i + '" aria-label="Remover ' + esc(q) + ' das buscas recentes" title="Remover">&times;</button></div>';
     }).join("");
     $("#lugares-recentes-titulo").hidden = !lugares.rec.length;
