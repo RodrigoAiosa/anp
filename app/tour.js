@@ -36,7 +36,7 @@
       texto: 'Digite um CEP, município ou nome de posto, ou toque em "Usar minha localização". O mapa marca um pino e lista os postos mais próximos, com um raio de 1 a 30 km que você ajusta. Arraste o pino ou clique em qualquer ponto vazio do mapa para mudar o lugar.' },
     { id: 'lugares', icone: '⭐', titulo: 'Meus lugares',
       alvo: function () { return document.getElementById('secao-lugares'); }, painel: true,
-      texto: 'Depois de uma busca, use "Salvar este ponto" para guardar o endereço e voltar a ele com um toque. As buscas recentes ficam aqui também. Tudo fica só no seu navegador.' },
+      texto: 'Depois de uma busca, use "Salvar este ponto" para guardar o endereço. Na ficha de um posto, use "Favoritar este posto". Um toque no favorito volta a ele, e as buscas recentes ficam aqui também. Tudo fica só no seu navegador.' },
     { id: 'uf', icone: '🗺️', titulo: 'Estado e município',
       alvo: function () { return secaoDe('#uf'); }, painel: true,
       texto: 'Limite o mapa a um estado e a um município para ver só os postos que interessam. O Top 3 e a lista abaixo seguem o que você escolher.' },

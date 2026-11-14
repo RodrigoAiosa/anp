@@ -588,10 +588,17 @@
       '<div class="ficha-linha"><span>Bandeira</span><strong>' + esc(p[1]) + "</strong></div>" +
       '<div class="ficha-linha"><span>CNPJ</span><code>' + esc(fmtCnpj(p[5])) + "</code></div>" +
       (precos || '<div class="ficha-linha"><span>Preços</span><strong>sem coleta recente</strong></div>') +
+      '<div class="botoes" style="margin:8px 0 0"><button id="ficha-fav" type="button" aria-pressed="' + (ehFavoritoPosto(cnpj) ? "true" : "false") + '">' + (ehFavoritoPosto(cnpj) ? "★ Posto favorito" : "☆ Favoritar este posto") + '</button></div>' +
       '<div class="ficha-links"><a href="' + mapsLink([p[2], p[3], achado.m.nome, achado.uf, "Brasil"].filter(Boolean).join(", ")) + '" target="_blank" rel="noopener">Abrir endereço no Google Maps</a></div>' +
       '<div class="nota">' + (p[7] != null ? "Posição informada pela ANP no cadastro do posto; a precisão varia." : "A ANP não informa a coordenada deste posto: o ponto no mapa é o centro do município.") + "</div>";
     f.hidden = false;
     $("#fechar-ficha").addEventListener("click", fecharFicha);
+    $("#ficha-fav").addEventListener("click", function () {
+      var ativo = alternarFavoritoPosto(cnpj), b = this;
+      b.setAttribute("aria-pressed", ativo ? "true" : "false");
+      b.textContent = ativo ? "★ Posto favorito" : "☆ Favoritar este posto";
+      if (ativo && window.Painel) window.Painel.abrir($("#secao-lugares"));
+    });
   }
 
   // ------------------------------------------------------------------ busca
@@ -877,7 +884,7 @@
     try {
       var x = JSON.parse(localStorage.getItem(CHAVE_LUGARES) || "null");
       if (!x) return;
-      lugares.fav = (x.fav || []).filter(function (f) { return f && typeof f.nome === "string" && dentroDoBrasil(f.lat, f.lon); }).slice(0, MAX_FAV);
+      lugares.fav = (x.fav || []).filter(function (f) { return f && typeof f.nome === "string" && dentroDoBrasil(f.lat, f.lon) && (f.cnpj == null || (typeof f.cnpj === "string" && f.uf && f.ibge)); }).slice(0, MAX_FAV);
       lugares.rec = (x.rec || []).filter(function (q) { return typeof q === "string" && q; }).slice(0, MAX_REC);
     } catch (e) { /* storage indisponível: vale só nesta aba */ }
   }
@@ -892,7 +899,7 @@
   }
   function renderizarLugares() {
     $("#lugares-favoritos").innerHTML = lugares.fav.map(function (f, i) {
-      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-fav="' + i + '" title="Ver os postos perto deste lugar"><span class="estrela" aria-hidden="true">★</span>' + esc(f.nome) + '</button>' +
+      return '<div class="lugar" role="listitem"><button type="button" class="lugar-ir" data-fav="' + i + '" title="Ver os postos perto deste lugar"><span class="estrela" aria-hidden="true">' + (f.cnpj ? "⛽" : "★") + '</span>' + esc(f.nome) + '</button>' +
         '<button type="button" class="lugar-x" data-del-fav="' + i + '" aria-label="Remover ' + esc(f.nome) + '" title="Remover">&times;</button></div>';
     }).join("");
     $("#lugares-recentes").innerHTML = lugares.rec.map(function (q, i) {
@@ -907,7 +914,7 @@
     if (!ctxPerto) return;
     var o = ctxPerto.o, nome = ($("#salvar-nome").value || "").trim().slice(0, 60) || ("Ponto " + o.lat.toFixed(4) + ", " + o.lon.toFixed(4));
     var k = o.lat.toFixed(5) + "," + o.lon.toFixed(5);
-    lugares.fav = lugares.fav.filter(function (f) { return f.lat.toFixed(5) + "," + f.lon.toFixed(5) !== k; });
+    lugares.fav = lugares.fav.filter(function (f) { return f.cnpj || f.lat.toFixed(5) + "," + f.lon.toFixed(5) !== k; });
     lugares.fav.unshift({ nome: nome, lat: +o.lat.toFixed(6), lon: +o.lon.toFixed(6) });
     lugares.fav = lugares.fav.slice(0, MAX_FAV);
     gravarLugares(); renderizarLugares();
@@ -915,6 +922,18 @@
     var b = $("#perto-salvar"); b.textContent = "★ Ponto salvo";
     setTimeout(function () { b.textContent = "☆ Salvar este ponto"; }, 1800);
     if (window.Painel) window.Painel.abrir($("#secao-lugares"));
+  }
+  function ehFavoritoPosto(cnpj) { return lugares.fav.some(function (f) { return f.cnpj === cnpj; }); }
+  function alternarFavoritoPosto(cnpj) {
+    var a = idxPosto[cnpj]; if (!a) return false;
+    if (ehFavoritoPosto(cnpj)) { lugares.fav = lugares.fav.filter(function (f) { return f.cnpj !== cnpj; }); }
+    else {
+      var p = a.p, la = p[7] != null ? p[7] : a.m.lat, lo = p[8] != null ? p[8] : a.m.lon;
+      lugares.fav.unshift({ nome: String(p[0]).slice(0, 60) + " · " + a.m.nome, lat: +la, lon: +lo, cnpj: cnpj, uf: a.uf, ibge: a.m.ibge });
+      lugares.fav = lugares.fav.slice(0, MAX_FAV);
+    }
+    gravarLugares(); renderizarLugares();
+    return ehFavoritoPosto(cnpj);
   }
   function rodarBusca(q) {   // repete uma busca digitada (CEP ou nome)
     $("#entrada").value = q; buscar();
@@ -937,6 +956,18 @@
       var d = b.dataset;
       if (d.fav != null) {
         var f = lugares.fav[+d.fav]; if (!f) return;
+        if (f.cnpj) {   // posto favorito: abre a ficha
+          carregarUF(f.uf).then(function () {
+            if (!idxPosto[f.cnpj]) return;
+            return selecionar(f.uf, f.ibge, true).then(function () {
+              abrirFichaPosto(f.cnpj);
+              var p = idxPosto[f.cnpj].p, anim = !MENOS_MOVIMENTO;
+              if (p[7] != null) mapa.flyTo([p[7], p[8]], 16, { animate: anim, duration: 0.7 });
+              else mapa.flyTo([f.lat, f.lon], 12, { animate: anim, duration: 0.7 });
+            });
+          });
+          return;
+        }
         if (modoPontos) procurarRaio({ lat: f.lat, lon: f.lon, exato: true, rotulo: f.nome });
         else {
           var c = R.municipios.map(function (m) { return { m: m, d: km(f.lat, f.lon, m[3], m[4]) }; }).sort(function (a, z) { return a.d - z.d; })[0];
