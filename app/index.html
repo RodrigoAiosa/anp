@@ -75,9 +75,13 @@
     <div class="secao" id="secao-perto" hidden>
       <h2>Postos mais próximos</h2>
       <div id="perto-cabeca" class="msg" style="margin-top:0"></div>
+      <div class="deslizante" id="bloco-raio" hidden>
+        <label>Raio <strong id="raio-valor">5 km</strong></label>
+        <input id="raio" type="range" min="1" max="30" value="5" step="1" aria-label="Raio da busca">
+      </div>
       <div id="perto-lista" class="lista lista-rolagem" style="max-height:460px"></div>
       <button id="perto-mais" class="pagina-mais" type="button" hidden>Mostrar mais</button>
-      <div class="nota">A ANP não publica a coordenada de cada posto. A ordem usa o <em>município</em> e a <em>proximidade de CEP</em> (CEPs próximos costumam ser ruas próximas), então é uma aproximação, não uma distância exata.</div>
+      <div class="nota" id="perto-nota">A ANP não publica a coordenada de cada posto. A ordem usa o <em>município</em> e a <em>proximidade de CEP</em> (CEPs próximos costumam ser ruas próximas), então é uma aproximação, não uma distância exata.</div>
       <div class="botoes"><button id="perto-fechar" type="button">Fechar a busca</button></div>
     </div>
 

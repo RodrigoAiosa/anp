@@ -906,3 +906,7 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .selo.viz { background: var(--card); color: var(--muted); box-shadow: inset 0 0 0 1px var(--border2); }
 .marca-busca { pointer-events: none; }
 #perto-cabeca strong { color: var(--text); }
+
+/* Número do posto na lista "mais próximos", sobre o mapa */
+.num-perto { pointer-events: none; }
+.num-perto span { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--cor-ciano); color: #04202a; font: 800 11px/1 Inter, sans-serif; box-shadow: 0 0 0 2px rgba(4, 32, 42, .85), 0 2px 8px rgba(0, 0, 0, .5); }

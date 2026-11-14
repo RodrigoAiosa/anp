@@ -25,6 +25,7 @@
   var MENOS_MOVIMENTO = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
   var R = null;             // resumo.json
+  var idxPosto = {};        // cnpj -> {m, p, uf}
   var cacheUF = {};         // uf -> json
   var mapa, camada, camadaBase, rendCanvas;
   var circulos = {};        // ibge -> L.circleMarker
@@ -314,7 +315,7 @@
     }
     box.innerHTML = h;
     $$("#chips-band input").forEach(function (i) {
-      i.addEventListener("change", function () { filtro.ocultas[i.dataset.g] = !i.checked; refazerFiltro(); camadaPts.redesenhar(); renderLegenda(); });
+      i.addEventListener("change", function () { filtro.ocultas[i.dataset.g] = !i.checked; refazerFiltro(); camadaPts.redesenhar(); renderLegenda(); if (ctxPerto && ctxPerto.modo === "raio") atualizarRaio(false); });
     });
   }
 
@@ -337,7 +338,12 @@
     mapa.on("mousemove", function (e) { ult = e; if (!agendado) { agendado = true; L.Util.requestAnimFrame(quadro); } });
     mapa.on("mouseout movestart zoomstart", function () { dica.classList.remove("ligada"); });
     mapa.on("click", function (e) {
-      var i = camadaPts.maisProximo(e.containerPoint, 11); if (i < 0) return;
+      var i = camadaPts.maisProximo(e.containerPoint, 11);
+      if (i < 0) {
+        if (ctxPerto && ctxPerto.modo === "raio" && pino) { pino.setLatLng(e.latlng); moverPino(); }
+        else procurarRaio({ lat: e.latlng.lat, lon: e.latlng.lng, exato: true, rotulo: "Ponto no mapa · " + e.latlng.lat.toFixed(5) + ", " + e.latlng.lng.toFixed(5) });
+        return;
+      }
       var uf = PT.uf[PT.u[i]], ibge = PT.m[i], cnpj = PT.c[i];
       if (!ibge) { return; }
       selecionar(uf, ibge, true).then(function () { abrirFichaPosto(cnpj); });
@@ -363,7 +369,11 @@
   }
   function carregarUF(uf) {
     if (cacheUF[uf]) return Promise.resolve(cacheUF[uf]);
-    return json("dados/uf/" + uf + ".json").then(function (d) { cacheUF[uf] = d; return d; });
+    return json("dados/uf/" + uf + ".json").then(function (d) {
+      cacheUF[uf] = d;
+      d.municipios.forEach(function (m) { m.postos.forEach(function (p) { idxPosto[p[5]] = { m: m, p: p, uf: uf }; }); });
+      return d;
+    });
   }
   function munAtual() {
     if (!estado.uf || !estado.ibge || !cacheUF[estado.uf]) return null;
@@ -385,14 +395,14 @@
       gravarHash();
     });
   }
-  function limparSelecao() {
+  function limparSelecao(semVoo) {
     estado.uf = ""; estado.ibge = ""; estado.busca = ""; estado.mostrar = PAGINA;
     $("#uf").value = "";
     $("#mun").innerHTML = '<option value="">Todos</option>';
     $("#mun").disabled = true;
     $("#busca").value = "";
     fecharFicha();
-    desenhar(); enquadrar(); renderizar(); gravarHash();
+    desenhar(); if (semVoo !== true) enquadrar(); renderizar(); gravarHash();
   }
   function preencherMunicipios() {
     var sel = $("#mun"), d = cacheUF[estado.uf];
@@ -562,15 +572,7 @@
     $("#fechar-ficha").addEventListener("click", fecharFicha);
   }
 
-  function achaPosto(cnpj) {
-    var achado = null;
-    Object.keys(cacheUF).some(function (uf) {
-      return cacheUF[uf].municipios.some(function (m) {
-        return m.postos.some(function (p) { if (p[5] === cnpj) { achado = { m: m, p: p, uf: uf }; return true; } return false; });
-      });
-    });
-    return achado;
-  }
+  function achaPosto(cnpj) { return idxPosto[cnpj] || null; }
 
   function abrirFichaPosto(cnpj) {
     var achado = achaPosto(cnpj);
@@ -587,7 +589,7 @@
       '<div class="ficha-linha"><span>CNPJ</span><code>' + esc(fmtCnpj(p[5])) + "</code></div>" +
       (precos || '<div class="ficha-linha"><span>Preços</span><strong>sem coleta recente</strong></div>') +
       '<div class="ficha-links"><a href="' + mapsLink([p[2], p[3], achado.m.nome, achado.uf, "Brasil"].filter(Boolean).join(", ")) + '" target="_blank" rel="noopener">Abrir endereço no Google Maps</a></div>' +
-      '<div class="nota">O ponto no mapa é o centro do município, não a posição do posto.</div>';
+      '<div class="nota">' + (p[7] != null ? "Posição informada pela ANP no cadastro do posto; a precisão varia." : "A ANP não informa a coordenada deste posto: o ponto no mapa é o centro do município.") + "</div>";
     f.hidden = false;
     $("#fechar-ficha").addEventListener("click", fecharFicha);
   }
@@ -655,6 +657,7 @@
       if (!m) { setErro("Achei o CEP (" + (v.localidade || "") + "/" + (v.uf || "") + "), mas não localizei o município no mapa."); return; }
       setErro("");
       var rotulo = "CEP " + cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") + [v.logradouro, v.bairro].filter(Boolean).map(function (x) { return " · " + x; }).join("") + " · " + m[1] + "/" + m[2];
+      if (modoPontos) return posicaoDoCEP(m, parseInt(cep, 10)).then(function (pos) { return procurarRaio({ lat: pos[0], lon: pos[1], rotulo: rotulo + (pos[2] ? " · pino perto dos postos de CEP vizinho; arraste para ajustar" : " · pino no centro do município; arraste para ajustar"), exato: false }); });
       return procurarProximos({ lat: m[3], lon: m[4], ibge: m[0], cep: parseInt(cep, 10), rotulo: rotulo, exato: false });
     }).catch(function () { setErro("Não consegui consultar o CEP agora (ViaCEP fora do ar ou sem internet). Tente de novo ou escolha o município."); });
   }
@@ -668,6 +671,10 @@
       setErro("Localização obtida. Procurando o CEP e o município do ponto…", true);
       var cand = R.municipios.map(function (m) { return { m: m, d: km(lat, lon, m[3], m[4]) }; }).sort(function (a, c) { return a.d - c.d; }).slice(0, 6);
       if (cand[0].d > 150) { b.disabled = false; setErro("Você parece estar a mais de 150 km de qualquer município com postos no mapa (fora do Brasil?)."); return; }
+      if (modoPontos) {
+        b.disabled = false; setErro("");
+        return procurarRaio({ lat: lat, lon: lon, exato: true, rotulo: "Sua localização · " + cand[0].m[1] + "/" + cand[0].m[2] + " (±" + Math.round(pos.coords.accuracy) + " m)" });
+      }
       // OpenStreetMap devolve CEP e cidade do ponto; sem ele, usamos o município de centro mais próximo.
       fetchJSON("https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=pt-BR&lat=" + lat + "&lon=" + lon, 6000)
         .catch(function () { return null; })
@@ -687,7 +694,8 @@
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }
 
-  function procurarProximos(o) {
+  function procurarProximos(o) { return modoPontos ? procurarRaio(o) : procurarProximosAprox(o); }
+  function procurarProximosAprox(o) {
     // município principal + vizinhos num raio de 35 km (ordenados por distância ao ponto)
     var viz = R.municipios.filter(function (m) { return m[0] !== o.ibge; })
       .map(function (m) { return { m: m, d: km(o.lat, o.lon, m[3], m[4]) }; })
@@ -733,6 +741,7 @@
 
   function renderPerto() {
     if (!ctxPerto) return;
+    if (ctxPerto.modo === "raio") return renderPertoRaio();
     var c = ctxPerto, o = c.o, fatia = c.itens.slice(0, c.mostrar);
     $("#perto-cabeca").innerHTML = "<strong>" + esc(o.rotulo) + "</strong><br>" + fmtN(c.itens.length) + " postos no município e em municípios num raio de 35 km. Mostrando os " + fmtN(fatia.length) + " mais próximos.";
     $("#perto-lista").innerHTML = fatia.map(function (it, i) {
@@ -749,6 +758,112 @@
   function fecharPerto() {
     ctxPerto = null; $("#secao-perto").hidden = true;
     if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
+    [pino, circuloRaio, destaquePerto].forEach(function (l) { if (l && mapa.hasLayer(l)) mapa.removeLayer(l); });
+    pino = null; circuloRaio = null; destaquePerto = null;
+  }
+
+  // ---------- busca por raio (cada posto tem coordenada: distância em linha reta a partir de um pino)
+  var raioKm = 5, pino = null, circuloRaio = null, rendSvg = null, destaquePerto = null, tokenPerto = 0, rafPerto = 0;
+
+  function posicaoDoCEP(m, cep) {
+    // posição do pino: mediana dos 3 postos do município com CEP mais parecido e coordenada da ANP
+    return carregarUF(m[2]).then(function (d) {
+      var mun = d.municipios.filter(function (x) { return x.ibge === m[0]; })[0], c = [];
+      if (mun) mun.postos.forEach(function (p) { var cp = parseInt(p[4], 10); if (p[7] != null && !isNaN(cp)) c.push({ dif: Math.abs(cp - cep), la: p[7], lo: p[8] }); });
+      c.sort(function (a, b) { return a.dif - b.dif; });
+      c = c.slice(0, 3);
+      if (!c.length) return [m[3], m[4], false];
+      var med = function (k) { var v = c.map(function (x) { return x[k]; }).sort(function (a, b) { return a - b; }); return v[Math.floor(v.length / 2)]; };
+      return [med("la"), med("lo"), true];
+    });
+  }
+
+  function colocarPino(lat, lon) {
+    if (!rendSvg) rendSvg = L.svg({ padding: 0.5 }).addTo(mapa);
+    if (!pino) {
+      pino = L.marker([lat, lon], { draggable: true, keyboard: false, zIndexOffset: 1000,
+        icon: L.divIcon({ className: "pino-arrastavel", html: '<div class="alvo-busca"><span class="radar"></span></div>', iconSize: [40, 40] }) }).addTo(mapa);
+      pino.on("dragstart", function () { pino.getElement().classList.add("arrastando"); });
+      pino.on("drag", moverPino);
+      pino.on("dragend", function () { var el = pino.getElement(); if (el) el.classList.remove("arrastando"); moverPino(); });
+    } else pino.setLatLng([lat, lon]);
+    if (!circuloRaio) circuloRaio = L.circle([lat, lon], { radius: raioKm * 1000, renderer: rendSvg, className: "raio-busca", interactive: false }).addTo(mapa);
+    else circuloRaio.setLatLng([lat, lon]);
+    if (!destaquePerto) destaquePerto = L.layerGroup().addTo(mapa);
+  }
+
+  function moverPino() {
+    if (!pino || !ctxPerto) return;
+    var ll = pino.getLatLng(), o = ctxPerto.o;
+    o.lat = ll.lat; o.lon = ll.lng; o.exato = true;
+    o.rotulo = "Ponto no mapa · " + ll.lat.toFixed(5) + ", " + ll.lng.toFixed(5);
+    circuloRaio.setLatLng(ll);
+    if (!rafPerto) rafPerto = L.Util.requestAnimFrame(function () { rafPerto = 0; atualizarRaio(false); });
+  }
+
+  function procurarRaio(o) {
+    var ja = ctxPerto && ctxPerto.modo === "raio";
+    ctxPerto = { o: o, mostrar: 15, modo: "raio", itens: [] };
+    if (estado.uf || estado.ibge) limparSelecao(true);   // sem filtro de município: todos os pontos à volta aparecem
+    fecharFicha();
+    colocarPino(o.lat, o.lon);
+    $("#bloco-raio").hidden = false;
+    $("#perto-nota").innerHTML = "Distância em linha reta a partir do pino. <strong>Arraste o pino</strong> ou <strong>clique no mapa</strong> para mudar o ponto, e use o raio para ampliar ou reduzir a busca. Posto marcado como “posição aproximada” não tem coordenada na ANP: ele fica no centro do município, então a distância dele é só uma estimativa.";
+    var sec = $("#secao-perto"); sec.hidden = false; sec.classList.remove("recolhida");
+    atualizarRaio(true);
+    if (!ja) { try { sec.scrollIntoView({ behavior: MENOS_MOVIMENTO ? "auto" : "smooth", block: "start" }); } catch (e) { /* ok */ } }
+    return Promise.resolve();
+  }
+
+  function atualizarRaio(enquadra) {
+    var c = ctxPerto; if (!c || c.modo !== "raio" || !PT) return;
+    var o = c.o, r = raioKm, itens = [];
+    var dLat = r / 111.2, dLon = r / (111.2 * Math.max(0.2, Math.cos(o.lat * Math.PI / 180)));
+    for (var i = 0; i < PT.n; i++) {
+      if (Math.abs(PT.lat[i] - o.lat) > dLat || Math.abs(PT.lon[i] - o.lon) > dLon) continue;
+      if (filtro.ocultas[bandGrupo(PT.b[i])]) continue;
+      var d = km(o.lat, o.lon, PT.lat[i], PT.lon[i]);
+      if (d <= r) itens.push({ i: i, d: d });
+    }
+    itens.sort(function (a, b) { return a.d - b.d; });
+    c.itens = itens;
+    circuloRaio.setRadius(r * 1000);
+    $("#raio-valor").textContent = r + " km";
+    if (enquadra) mapa.fitBounds(circuloRaio.getBounds().pad(0.15), { animate: !MENOS_MOVIMENTO, maxZoom: 16 });
+    renderPertoRaio();
+  }
+
+  function renderPertoRaio() {
+    var c = ctxPerto, o = c.o, fatia = c.itens.slice(0, c.mostrar), tk = ++tokenPerto, ufs = {};
+    fatia.forEach(function (x) { ufs[PT.uf[PT.u[x.i]]] = 1; });
+    $("#perto-cabeca").innerHTML = "<strong>" + esc(o.rotulo) + "</strong><br>" + (c.itens.length
+      ? fmtN(c.itens.length) + " posto" + (c.itens.length > 1 ? "s" : "") + " em até " + raioKm + " km. Mostrando os " + fmtN(fatia.length) + " mais próximos."
+      : "Nenhum posto em até " + raioKm + " km. Aumente o raio.");
+    destaquePerto.clearLayers();
+    fatia.forEach(function (x, k) {
+      L.marker([PT.lat[x.i], PT.lon[x.i]], { interactive: false, keyboard: false, icon: L.divIcon({ className: "num-perto", html: "<span>" + (k + 1) + "</span>", iconSize: [20, 20] }) }).addTo(destaquePerto);
+    });
+    $("#perto-mais").hidden = c.itens.length <= fatia.length;
+    Promise.all(Object.keys(ufs).map(carregarUF)).then(function () {
+      if (tk !== tokenPerto || ctxPerto !== c) return;
+      var pi = PT.prod.indexOf(estado.prod), np = Math.max(1, PT.prod.length);
+      $("#perto-lista").innerHTML = fatia.map(function (x, k) {
+        var a = idxPosto[PT.c[x.i]], p = a && a.p, pr = pi >= 0 ? PT.preco[x.i * np + pi] : NaN;
+        var dist = x.d < 1 ? Math.max(10, Math.round(x.d * 100) * 10) + " m" : x.d.toLocaleString("pt-BR", { maximumFractionDigits: 1, minimumFractionDigits: 1 }) + " km";
+        return '<div class="item-lista perto-item" data-i="' + x.i + '"><span class="perto-pos">' + (k + 1) + '</span><span style="min-width:0">' +
+          '<span class="top3-nome" style="white-space:normal">' + esc(p ? p[0] : PT.nome[x.i]) + "</span>" +
+          '<span class="top3-sub" style="white-space:normal"><span class="selo ' + (PT.e[x.i] ? "" : "viz") + '">' + dist + (PT.e[x.i] ? "" : " · posição aproximada") + "</span>" +
+          esc(p ? [p[1], p[2], p[3]].filter(Boolean).join(" · ") : PT.band[PT.b[x.i]]) + "</span></span>" +
+          '<span class="top3-preco" style="color:var(--text)">' + (pr === pr ? fmtPreco(pr, estado.prod) : "") + "</span></div>";
+      }).join("") || '<div class="msg">Nenhum posto cadastrado por perto.</div>';
+      $$("#perto-lista .perto-item").forEach(function (el) {
+        el.addEventListener("click", function () {
+          var i = +el.dataset.i;
+          abrirFichaPosto(PT.c[i]);
+          mapa.flyTo([PT.lat[i], PT.lon[i]], Math.max(mapa.getZoom(), 15), { animate: !MENOS_MOVIMENTO, duration: 0.6 });
+        });
+      });
+    });
   }
 
   // ------------------------------------------------------------- hash / link
@@ -823,7 +938,7 @@
       var h = lerHash();
       $("#uf").addEventListener("change", function (e) { e.target.value ? selecionar(e.target.value, "") : limparSelecao(); });
       $("#mun").addEventListener("change", function (e) { selecionar(estado.uf, e.target.value); });
-      $("#limpar").addEventListener("click", limparSelecao);
+      $("#limpar").addEventListener("click", function () { limparSelecao(); });
       $$("input[name=cor]").forEach(function (i) { i.addEventListener("change", function () { estado.cor = i.value; desenhar(); renderLegenda(); gravarHash(); }); });
       $("#entrada").addEventListener("input", function () { clearTimeout(tBusca); tBusca = setTimeout(buscar, 120); });
       $("#entrada").addEventListener("keydown", function (e) {
@@ -835,6 +950,8 @@
       $$(".exemplo").forEach(function (b) { b.addEventListener("click", function () { $("#entrada").value = b.dataset.q; buscar(); if (/[a-z]/i.test(b.dataset.q)) { var f = $("#resultados .item-lista"); if (f) f.click(); } else buscarCEP(b.dataset.q); }); });
       if (navigator.geolocation) { $("#usar-local").hidden = false; $("#usar-local").addEventListener("click", usarLocal); }
       $("#perto-mais").addEventListener("click", function () { ctxPerto.mostrar += 15; renderPerto(); });
+      $("#raio").addEventListener("input", function (e) { raioKm = +e.target.value; $("#raio-valor").textContent = raioKm + " km"; if (ctxPerto && ctxPerto.modo === "raio") atualizarRaio(false); });
+      $("#raio").addEventListener("change", function () { if (circuloRaio) mapa.fitBounds(circuloRaio.getBounds().pad(0.15), { animate: !MENOS_MOVIMENTO, maxZoom: 16 }); });
       $("#perto-fechar").addEventListener("click", fecharPerto);
       $("#busca").addEventListener("input", function (e) { estado.busca = e.target.value; estado.mostrar = PAGINA; renderLista(); });
       $("#mais").addEventListener("click", function () { estado.mostrar += PAGINA; renderLista(); });
