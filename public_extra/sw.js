@@ -1,8 +1,7 @@
 /* Service worker: abre o mapa na hora e funciona sem internet.
  *
- * - Páginas e arquivos do próprio site: "stale-while-revalidate". Responde do
- *   cache (instantâneo, mesmo offline) e atualiza em segundo plano. O pedido de
- *   atualização é condicional (304), então custa pouco.
+ * - Páginas, JS e CSS do próprio site: rede primeiro (com validação 304), cache só offline.
+ * - /vendor (Leaflet, fontes): cache primeiro.
  * - O que é de outro domínio (mapa de fundo, cobertura, ViaCEP, Nominatim) NÃO
  *   passa por aqui: o navegador pede direto. Offline abre só a página; os dados vêm da rede.
  * - /status.json e /dados/ nunca são guardados.
@@ -34,17 +33,21 @@ self.addEventListener("fetch", (e) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname === "/status.json" || url.pathname.startsWith("/dados/") || url.pathname === "/sw.js") return;
 
+  // Páginas, JS e CSS do próprio site: rede primeiro (o deploy novo aparece na hora), cache só se estiver offline.
+  // /vendor e fontes (imutáveis): cache primeiro, atualizando em segundo plano.
+  const imutavel = url.pathname.startsWith("/vendor/");
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const chave = req.mode === "navigate" && url.pathname === "/" ? "/" : req;
     const guardado = await cache.match(chave, { ignoreSearch: true });
-    const rede = fetch(req).then((resp) => {
+    const rede = fetch(req, imutavel ? undefined : { cache: "no-cache" }).then((resp) => {
       if (resp && resp.ok) cache.put(chave, resp.clone());
       return resp;
     });
-    if (guardado) { rede.catch(() => {}); return guardado; }
+    if (imutavel && guardado) { rede.catch(() => {}); return guardado; }
     try { return await rede; }
     catch (err) {
+      if (guardado) return guardado;
       if (req.mode === "navigate") { const home = await cache.match("/"); if (home) return home; }
       return new Response("Sem conexão.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } });
     }
