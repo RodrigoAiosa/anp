@@ -17,7 +17,12 @@ ficha, mapa base alternável, PWA, SEO e cabeçalhos de segurança.
 | Ficha | Município (totais, média, mínimo, máximo) ou posto (bandeira, CNPJ, preços coletados) |
 | Resumo | Postos por bandeira no recorte |
 
-Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10, GNV e GLP (13 kg).
+Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10 e GNV (arquivo de combustíveis automotivos da ANP;
+GLP vem em outro arquivo e ainda não está incluído).
+
+**Cobertura dos preços:** no primeiro build real (preços de jun/2026), 5.651 dos 45.840 postos tinham preço e só
+413 dos 5.525 municípios tinham média, porque o levantamento da ANP cobre poucas centenas de municípios. Nos demais, o
+mapa mostra o município em cinza e o Top 3 do estado/Brasil continua valendo.
 
 ## Dois conjuntos de dados, dois significados (leia isto)
 
