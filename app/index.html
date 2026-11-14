@@ -1,54 +1,125 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-tema="escuro">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mapa de Postos de Combustíveis do Brasil — dados ANP</title>
-<meta name="description" content="Todos os postos revendedores cadastrados na ANP, por estado e município, com os 3 mais baratos e os 3 mais caros de cada combustível.">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>Mapa de Postos de Combustíveis — ANP</title>
+<link rel="icon" type="image/svg+xml" href="icon.svg">
+<meta name="description" content="Todos os postos de combustíveis cadastrados na ANP, por estado e município, com os 3 mais baratos e os 3 mais caros de cada combustível.">
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<div id="demo" hidden>⚠️ DADOS FICTÍCIOS — versão de demonstração gerada sem acesso à ANP.</div>
-<aside id="painel">
-  <header>
-    <h1>⛽ Postos do Brasil</h1>
-    <p class="fonte">Fonte: ANP (dados abertos). <span id="atualizado"></span></p>
-  </header>
 
-  <section class="filtros">
-    <label>Estado
-      <select id="uf"><option value="">Brasil (todos)</option></select>
-    </label>
-    <label>Município
-      <select id="mun" disabled><option value="">Todos do estado</option></select>
-    </label>
-    <label>Combustível
-      <select id="prod"></select>
-    </label>
-  </section>
+<div id="boot" role="status" aria-live="polite">
+  <div class="boot-centro">
+    <div class="boot-radar" aria-hidden="true"><i></i><i></i><i></i><b></b><s></s></div>
+    <div class="boot-titulo">Mapa de <em>Postos</em> ANP</div>
+    <div class="boot-barra" aria-hidden="true"></div>
+    <div class="boot-sub" id="boot-msg">Lendo os postos cadastrados na ANP</div>
+  </div>
+</div>
 
-  <section id="totais" class="totais" aria-live="polite"></section>
+<div id="aviso-demo" class="aviso-demo" hidden>DADOS FICTÍCIOS — versão de demonstração, gerada sem acesso à ANP.</div>
 
-  <section>
-    <h2 id="tit-rank">Top 3 por preço</h2>
-    <div id="rank"></div>
-  </section>
+<header class="header">
+  <span class="reflexo" aria-hidden="true"></span>
+  <div class="header-esq">
+    <button id="recolher-painel" class="btn-icon" type="button" aria-controls="painel" aria-expanded="true"
+            title="Esconder o menu lateral (mapa em tela cheia)" aria-label="Esconder o menu lateral">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="coluna" d="M5.5 4H9v16H5.5A2.5 2.5 0 0 1 3 17.5v-11A2.5 2.5 0 0 1 5.5 4z"/><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M9 4v16"/><path class="seta" d="M16.2 9.5l-2.5 2.5 2.5 2.5"/></svg>
+    </button>
+    <div class="header-titles">
+      <h1 class="logo-name">Mapa de <em>Postos</em> ANP</h1>
+      <div class="logo-tag">Postos revendedores cadastrados · preços por combustível</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <span class="hbadge-update" id="idade-base" title="Data de geração desta publicação">Base —</span>
+    <span class="hbadge" title="Dados abertos da ANP, sem dado pessoal">Dado público</span>
+    <button id="tema" class="btn-icon" type="button" title="Alternar tema claro/escuro" aria-label="Alternar tema">
+      <svg class="lua" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+      <svg class="sol" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+    </button>
+  </div>
+</header>
 
-  <section>
-    <h2>Postos cadastrados</h2>
-    <input id="busca" type="search" placeholder="Filtrar por nome, bandeira, bairro, CNPJ…" disabled>
-    <div id="lista-info" class="info"></div>
-    <ul id="lista"></ul>
-    <button id="mais" hidden>Mostrar mais</button>
-  </section>
+<div id="app">
+  <aside id="painel">
+    <div class="secao">
+      <h2>Encontrar</h2>
+      <div class="busca-campo">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="entrada" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Município (ou posto/CNPJ, dentro de um estado)">
+      </div>
+      <div id="resultados" class="lista lista-rolagem" hidden></div>
+      <div class="filtros-uf">
+        <label>Estado <select id="uf" class="campo"><option value="">Brasil</option></select></label>
+        <label>Município <select id="mun" class="campo" disabled><option value="">Todos</option></select></label>
+      </div>
+      <div class="botoes"><button id="limpar" type="button">Ver o Brasil todo</button></div>
+    </div>
 
-  <footer>
-    <p>Um posto aparece no <b>centro do município</b>: a ANP não publica a coordenada de cada posto nestes arquivos.
-    O preço vem do Levantamento de Preços (LPC), que cobre só parte dos postos e é atualizado semanalmente.</p>
-  </footer>
-</aside>
-<main id="mapa" aria-label="Mapa dos municípios com postos"></main>
+    <div class="secao" id="secao-comb">
+      <h2>Combustível</h2>
+      <div class="chips" id="chips-prod" role="radiogroup" aria-label="Combustível"></div>
+      <div class="lista-titulo">Colorir os municípios pelo:</div>
+      <div class="chips" id="chips-cor" role="radiogroup" aria-label="Cor dos círculos">
+        <label class="chip"><input type="radio" name="cor" value="preco" checked><span>Preço médio</span></label>
+        <label class="chip"><input type="radio" name="cor" value="postos"><span>Nº de postos</span></label>
+      </div>
+      <div id="legenda"></div>
+    </div>
+
+    <div class="secao" id="secao-top3">
+      <h2 id="tit-top3">Top 3</h2>
+      <div id="top3"></div>
+      <div class="nota">O preço vem do Levantamento de Preços da ANP, que cobre só uma <em>amostra</em> dos postos. Vale a coleta mais recente de cada posto na janela indicada no rodapé.</div>
+    </div>
+
+    <div class="secao" id="secao-lista">
+      <h2>Postos cadastrados</h2>
+      <div id="lista-info" class="msg"></div>
+      <input id="busca" class="campo" type="search" placeholder="Filtrar por nome, bandeira, bairro, CNPJ…" disabled>
+      <div id="lista" class="lista lista-rolagem" style="max-height:420px"></div>
+      <button id="mais" class="pagina-mais" type="button" hidden>Mostrar mais</button>
+    </div>
+
+    <div class="secao">
+      <h2>Resumo do filtro</h2>
+      <div id="resumo"></div>
+    </div>
+
+    <div id="fonte">
+      <strong>Dado público</strong>
+      Cadastro de revendedores varejistas e Levantamento de Preços de Combustíveis, da ANP.
+      O posto aparece no <em>centro do município</em>: a ANP não publica a coordenada de cada posto nesses arquivos.
+      <a href="sobre">Fontes, limites e privacidade</a>
+    </div>
+
+    <div id="rodape">
+      <span>Gerado em <span id="base-info">—</span></span>
+      <span><span id="total-info">—</span> postos no cadastro</span>
+      <span>Preços: <span id="periodo-info">—</span></span>
+    </div>
+  </aside>
+
+  <div id="palco">
+    <main id="mapa" aria-label="Mapa dos municípios com postos"></main>
+    <div id="hud" aria-live="off">
+      <span class="hud-vivo"><b id="contador">—</b></span>
+      <span id="hud-zoom">z —</span>
+      <button id="copiar-link" type="button" title="Copia um link que reabre esta mesma vista (estado, município, combustível)">Copiar link</button>
+    </div>
+    <div id="ficha" hidden></div>
+    <div id="seletor-base" class="controle-mapa" role="group" aria-label="Mapa base"></div>
+  </div>
+</div>
+
+<button id="alternar-painel" type="button">Filtros</button>
+
 <script src="vendor/leaflet.js"></script>
 <script src="app.js"></script>
 </body>

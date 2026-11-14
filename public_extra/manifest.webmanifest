@@ -1,0 +1,14 @@
+{
+  "name": "Mapa de Postos de Combustíveis — ANP",
+  "short_name": "Postos ANP",
+  "description": "Postos cadastrados na ANP por estado e município, com os 3 mais baratos e mais caros de cada combustível.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0f14",
+  "theme_color": "#0b0f14",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

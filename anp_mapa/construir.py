@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import datetime as dt
+import html
 import json
+import os
+import re
 import shutil
 from pathlib import Path
 
@@ -15,6 +18,10 @@ from .util import NOME_UF
 
 RAIZ = Path(__file__).resolve().parent.parent
 APP = RAIZ / "app"
+EXTRA = RAIZ / "public_extra"
+TITULO = "Mapa de Postos de Combustíveis — ANP"
+DESCRICAO = ("Todos os postos de combustíveis cadastrados na ANP, por estado e município, "
+             "com os 3 mais baratos e os 3 mais caros de cada combustível.")
 
 
 def _dump(obj, caminho: Path) -> None:
@@ -48,6 +55,11 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
         periodo = None
 
     brasil, por_uf, por_mun = ranking_por_escopo(rec) if len(rec) else ({}, {}, {})
+    medias: dict[str, dict[str, list]] = {}
+    if len(rec):
+        agg = rec.dropna(subset=["codigo_ibge"]).groupby(["codigo_ibge", "produto"])["preco"].agg(["mean", "count"])
+        for (cod, prod), r in agg.iterrows():
+            medias.setdefault(str(cod), {})[prod] = [round(float(r["mean"]), 3), int(r["count"])]
     mapa_preco = {}
     for r in rec.itertuples():
         mapa_preco.setdefault(r.cnpj, {})[r.produto] = [round(float(r.preco), 3), r.data.strftime("%Y-%m-%d")]
@@ -76,7 +88,8 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
                 "postos": lista,
             })
             if tem:
-                marcadores.append([str(cod), nome, uf, round(float(lat), 4), round(float(lon), 4), len(lista)])
+                marcadores.append([str(cod), nome, uf, round(float(lat), 4), round(float(lon), 4), len(lista),
+                                   medias.get(str(cod), {})])
         muns.sort(key=lambda m: m["nome"])
         _dump({"uf": uf, "municipios": muns, "ranking": por_uf.get(uf, {})}, saida / "dados" / "uf" / f"{uf}.json")
         com_preco = int(g["cnpj"].isin(mapa_preco).sum())
@@ -88,6 +101,11 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
          .sort_values("postos", ascending=False)
          .to_csv(saida / "dados" / "nao_casados.csv", index=False))
 
+    if len(postos) == 0:
+        raise SystemExit("ERRO: nenhum posto lido do cadastro. Nada será publicado.")
+    if sum(u["n"] for u in resumo_ufs) != len(postos):
+        raise SystemExit("ERRO: a soma dos postos por UF não fecha com o cadastro. Nada será publicado.")
+    bandeiras = postos["bandeira"].str.upper().value_counts()
     resumo = {
         "gerado_em": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "demo": demo,
@@ -99,6 +117,76 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
         "produtos": ordem_produtos(rec["produto"].unique()) if len(rec) else [],
         "ufs": sorted(resumo_ufs, key=lambda x: x["uf"]),
         "ranking_br": brasil, "municipios": marcadores,
+        "bandeiras": [[k, int(v)] for k, v in bandeiras.items()],
     }
     _dump(resumo, saida / "dados" / "resumo.json")
+    _publicar_extras(saida, resumo, ufs)
     return resumo
+
+
+def url_do_site() -> str:
+    explicita = os.environ.get("SITE_URL", "").strip().rstrip("/")
+    if explicita:
+        return explicita if explicita.startswith("http") else "https://" + explicita
+    producao = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL", "").strip()
+    return ("https://" + producao) if producao else ""
+
+
+def _cabecalho_seo(base: str) -> str:
+    t, d = html.escape(TITULO, quote=True), html.escape(DESCRICAO, quote=True)
+    linhas = [
+        '<meta name="theme-color" content="#0b0f14">',
+        '<meta name="color-scheme" content="dark light">',
+        '<meta name="referrer" content="strict-origin-when-cross-origin">',
+        '<link rel="manifest" href="/manifest.webmanifest">',
+        '<link rel="apple-touch-icon" href="/icon.svg">',
+        '<meta property="og:type" content="website">', '<meta property="og:locale" content="pt_BR">',
+        f'<meta property="og:title" content="{t}">', f'<meta property="og:description" content="{d}">',
+        '<meta name="twitter:card" content="summary">',
+        f'<meta name="twitter:title" content="{t}">', f'<meta name="twitter:description" content="{d}">',
+        '<script>if("serviceWorker"in navigator&&(location.protocol==="https:"||location.hostname==="localhost"))'
+        '{addEventListener("load",function(){navigator.serviceWorker.register("/sw.js").catch(function(){})})}</script>',
+    ]
+    if base:
+        linhas += [f'<link rel="canonical" href="{base}/">', f'<meta property="og:url" content="{base}/">',
+                   f'<meta property="og:image" content="{base}/icon.svg">']
+    return "\n".join(linhas) + "\n"
+
+
+def _publicar_extras(saida: Path, resumo: dict, ufs: list[str] | None) -> None:
+    """SEO/PWA no index.html e arquivos de public_extra/ (404, sobre, manifest, sw, robots, ícone)."""
+    base = url_do_site()
+    idx = saida / "index.html"
+    conteudo = idx.read_text(encoding="utf-8")
+    ancora = re.search(r'<meta name="description"[^>]*>\n?', conteudo)
+    if not ancora:
+        raise SystemExit('ERRO: <meta name="description"> não encontrado em app/index.html.')
+    idx.write_text(conteudo[:ancora.end()] + _cabecalho_seo(base) + conteudo[ancora.end():], encoding="utf-8")
+
+    versao = (os.environ.get("VERCEL_GIT_COMMIT_SHA", "")[:7] or "local") + "-" + \
+        dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M")
+    per = resumo["periodo_precos"]
+    subst = {
+        "{{SITE_URL}}": base, "{{VERSAO}}": versao, "{{GERADO}}": html.escape(resumo["gerado_em"]),
+        "{{N_POSTOS}}": f"{resumo['n_postos']:,}".replace(",", "."),
+        "{{PERIODO}}": f"{per[0]} a {per[1]}" if per else "indisponível",
+    }
+    for modelo in sorted(EXTRA.iterdir()):
+        txt = modelo.read_text(encoding="utf-8")
+        for k, v in subst.items():
+            txt = txt.replace(k, v)
+        (saida / modelo.name).write_text(txt, encoding="utf-8")
+
+    urls = [f"{base}/", f"{base}/sobre"] if base else []
+    (saida / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(f"<url><loc>{u}</loc></url>" for u in urls) + "</urlset>\n", encoding="utf-8")
+    if base:
+        with open(saida / "robots.txt", "a", encoding="utf-8") as f:
+            f.write(f"Sitemap: {base}/sitemap.xml\n")
+    _dump({
+        "projeto": TITULO, "gerado_em_utc": resumo["gerado_em"], "recorte_uf": ufs or None,
+        "postos": resumo["n_postos"], "postos_com_preco": resumo["n_postos_com_preco"],
+        "sem_coordenada": resumo["n_sem_coordenada"], "periodo_precos": per,
+        "commit": os.environ.get("VERCEL_GIT_COMMIT_SHA"), "demo": resumo["demo"],
+    }, saida / "status.json")

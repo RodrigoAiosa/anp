@@ -1,0 +1,42 @@
+# Plano B: se a Vercel não conseguir baixar da ANP durante o build, este workflow baixa e
+# gera o site no GitHub (que costuma ser aceito pelo portal) e envia pronto com `--prebuilt`.
+# Exige os secrets VERCEL_TOKEN, VERCEL_ORG_ID e VERCEL_PROJECT_ID. Sem eles, o workflow só é pulado.
+name: Atualizar na Vercel (plano B)
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"   # segunda-feira, 06:00 de Brasília
+permissions:
+  contents: read
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Conferir secrets
+        id: chk
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::notice::Secrets da Vercel ausentes: nada a fazer."; echo "ok=0" >> "$GITHUB_OUTPUT"
+          else echo "ok=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v4
+        if: steps.chk.outputs.ok == '1'
+      - uses: actions/setup-python@v5
+        if: steps.chk.outputs.ok == '1'
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: requirements.txt }
+      - uses: actions/setup-node@v4
+        if: steps.chk.outputs.ok == '1'
+        with: { node-version: "22" }
+      - name: Gerar o site com dados da ANP
+        if: steps.chk.outputs.ok == '1'
+        run: pip install -r requirements.txt && python scripts/vercel_build.py
+      - name: Enviar para a Vercel (produção)
+        if: steps.chk.outputs.ok == '1'
+        run: |
+          npm i -g vercel@latest
+          mkdir -p .vercel/output/static && cp -r public/. .vercel/output/static/
+          printf '{"version":3}' > .vercel/output/config.json
+          vercel deploy --prebuilt --prod --token "$VERCEL_TOKEN"

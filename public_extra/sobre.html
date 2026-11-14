@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sobre, fontes e privacidade · Mapa de Postos ANP</title>
+<meta name="description" content="Fonte dos dados, limites e política de privacidade do Mapa de Postos de Combustíveis.">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+:root{color-scheme:dark light}
+body{margin:0;background:#0b0f14;color:#e6edf3;font:16px/1.65 system-ui,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:2rem 1.25rem 4rem}
+a{color:#26d7e8}h1{margin-top:0}h2{margin-top:2rem}
+code{background:#161d27;padding:.1em .35em;border-radius:4px}
+@media (prefers-color-scheme:light){body{background:#fff;color:#14202b}code{background:#eef2f6}a{color:#0a6c8a}}
+</style></head>
+<body><main>
+<p><a href="/">← Voltar ao mapa</a></p>
+<h1>Sobre, fontes e privacidade</h1>
+
+<h2>De onde vêm os dados</h2>
+<p>Dados abertos da <strong>ANP</strong>: o <em>cadastro dos revendedores varejistas de combustíveis automotivos</em>
+(todos os postos autorizados) e o <em>Levantamento de Preços de Combustíveis</em> (LPC).
+Esta publicação foi gerada em <strong>{{GERADO}}</strong>, com <strong>{{N_POSTOS}}</strong> postos no cadastro.
+Preços coletados entre <strong>{{PERIODO}}</strong>. Estado atual em <a href="/status.json"><code>/status.json</code></a>.</p>
+
+<h2>Limites</h2>
+<ul>
+<li><strong>O ranking de preços usa uma amostra.</strong> O LPC pesquisa só parte dos postos. "Mais barato" quer dizer o mais barato entre os postos pesquisados, não entre todos.</li>
+<li><strong>A posição é a do município.</strong> Os arquivos da ANP não trazem a coordenada de cada posto; o círculo fica no centro do município (IBGE).</li>
+<li>Cadastro autorizado não quer dizer posto aberto hoje. Preços podem ter mudado depois da coleta.</li>
+</ul>
+
+<h2>Privacidade (LGPD)</h2>
+<ul>
+<li>Este site <strong>não usa cookies, não tem cadastro e não rastreia ninguém</strong>. Os dados são públicos de pessoas jurídicas (CNPJ, razão social, endereço comercial).</li>
+<li>Tema e seções abertas ficam <strong>só no seu navegador</strong> (<code>localStorage</code>).</li>
+<li>O desenho do mapa vem do OpenStreetMap, cujos servidores veem o seu IP, como em qualquer site. "Abrir no Google Maps" só envia algo ao Google depois do seu clique.</li>
+</ul>
+
+<h2>Créditos e licença</h2>
+<p>Código sob licença MIT. Visual e estrutura derivados do <a href="https://github.com/RodrigoAiosa/MapaAntenasAnatel">Mapa de Antenas Anatel</a>
+(© João Victor Faraco, MIT). Coordenadas dos municípios: IBGE, via
+<a href="https://github.com/kelvins/municipios-brasileiros">kelvins/municipios-brasileiros</a>. Mapa © colaboradores do
+<a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>. Leaflet (BSD-2), Inter e Montserrat (OFL).</p>
+</main></body></html>

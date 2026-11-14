@@ -122,6 +122,11 @@ def test_construir_demo_fim_a_fim(tmp_path):
     out = tmp_path / "pub"
     r = construir(cad, [prc], out, demo=True)
     assert (out / "index.html").exists() and (out / "app.js").exists() and (out / "vendor" / "leaflet.js").exists()
+    idx = (out / "index.html").read_text(encoding="utf-8")
+    assert 'rel="manifest"' in idx and "serviceWorker" in idx
+    assert "{{" not in (out / "sw.js").read_text(encoding="utf-8")
+    assert "{{" not in (out / "sobre.html").read_text(encoding="utf-8")
+    assert json.loads((out / "status.json").read_text(encoding="utf-8"))["postos"] == r["n_postos"]
     resumo = json.loads((out / "dados" / "resumo.json").read_text(encoding="utf-8"))
     assert resumo["demo"] is True and resumo["n_postos"] == r["n_postos"]
     # a soma dos postos por UF, por município e o total do cadastro precisam fechar
@@ -133,6 +138,7 @@ def test_construir_demo_fim_a_fim(tmp_path):
         assert all(len(m["postos"]) == m["n"] for m in d["municipios"])
         total_mun += sum(m["n"] for m in d["municipios"])
     assert total_mun == resumo["n_postos"]
+    assert all(isinstance(m[6], dict) for m in resumo["municipios"])   # preço médio por município
     assert sum(m[5] for m in resumo["municipios"]) == resumo["n_postos"] - resumo["n_sem_coordenada"]
     # ranking nacional: 3 baratos <= 3 caros, em ordem
     for prod, r_ in resumo["ranking_br"].items():

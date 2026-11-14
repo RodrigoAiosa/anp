@@ -1,75 +1,87 @@
 # Mapa de Postos de Combustíveis do Brasil (dados ANP)
 
-Todos os postos revendedores **cadastrados na ANP**, navegáveis por **estado**, **município** e
-**combustível**, com os **3 mais baratos** e os **3 mais caros** em cada escopo (Brasil, estado, município).
-Projeto em Python que gera um site estático (Leaflet), no mesmo espírito do
-[MapaAntenasAnatel](https://github.com/RodrigoAiosa/MapaAntenasAnatel).
+Todos os postos revendedores **cadastrados na ANP**, por **estado**, **município** e **combustível**, com os
+**3 mais baratos** e os **3 mais caros** em cada escopo (Brasil, estado, município). Python gera um site
+estático (Leaflet) pronto para a **Vercel**, com o mesmo visual do
+[MapaAntenasAnatel](https://github.com/RodrigoAiosa/MapaAntenasAnatel): tema escuro/claro, painel em seções,
+ficha, mapa base alternável, PWA, SEO e cabeçalhos de segurança.
 
 ## O que ele mostra
 
 | Recurso | Como funciona |
 |---|---|
-| Todos os postos do Brasil | Cadastro de revendedores varejistas da ANP (CNPJ, razão social, bandeira, endereço) |
-| Por estado e município | Filtros + círculos no mapa (tamanho = nº de postos); clique num município para abrir |
-| Top 3 mais baratos / mais caros | Para cada combustível, no Brasil, no estado ou no município escolhido |
-| Lista e busca | Postos do escopo, com filtro por nome, bandeira, bairro ou CNPJ, e os preços coletados |
+| Todos os postos | Cadastro de revendedores varejistas da ANP (CNPJ, razão social, bandeira, endereço) |
+| Por estado e município | Seletores, busca e círculos no mapa (tamanho = nº de postos) |
+| Cor dos círculos | **Preço médio** do combustível escolhido (verde barato → vermelho caro) ou **nº de postos** |
+| Top 3 mais baratos / mais caros | Por combustível, no Brasil, no estado ou no município; clique para abrir o posto |
+| Ficha | Município (totais, média, mínimo, máximo) ou posto (bandeira, CNPJ, preços coletados) |
+| Resumo | Postos por bandeira no recorte |
 
-Combustíveis: gasolina comum, gasolina aditivada, etanol, diesel S-500, diesel S-10, GNV e GLP (13 kg).
+Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10, GNV e GLP (13 kg).
 
 ## Dois conjuntos de dados, dois significados (leia isto)
 
-1. **Cadastro de postos** (`dados-cadastrais-revendedores-varejistas-combustiveis-automoveis.csv`): lista os postos
-   autorizados. É daqui que vem "todos os postos".
+1. **Cadastro de postos**: lista os postos autorizados. É daqui que vem "todos os postos".
 2. **Levantamento de Preços de Combustíveis (LPC)**: a ANP coleta preços numa **amostra** de postos, toda semana.
-   É daqui que vêm os rankings. Logo, o "mais barato" é o mais barato **entre os postos pesquisados** na janela
-   de 30 dias (`--dias`) anterior à última coleta, não entre todos os postos do país. O preço usado é a coleta
-   mais recente de cada posto/produto. Preços fora de uma faixa plausível (ex.: gasolina < R$ 2 ou > R$ 20) são descartados.
+   É daqui que vêm os rankings. O "mais barato" é o mais barato **entre os postos pesquisados** na janela de
+   30 dias (`DIAS`) anterior à última coleta. Vale a coleta mais recente de cada posto/produto; preços fora de uma
+   faixa plausível (ex.: gasolina < R$ 2 ou > R$ 20) são descartados.
 
-**Posição no mapa:** esses arquivos não trazem latitude/longitude do posto. Cada posto é posicionado no
-**centroide do município** (IBGE) e listado no painel. Municípios cuja grafia não casa com a do IBGE ficam
-sem ponto no mapa (continuam na lista e nos rankings) e são relatados em `public/dados/nao_casados.csv`;
-corrija com uma linha em `ALIAS` (`anp_mapa/geo.py`).
+**Posição no mapa:** esses arquivos não trazem latitude/longitude do posto. Cada posto fica no **centroide do
+município** (IBGE) e é listado no painel. Municípios cuja grafia não casa com a do IBGE ficam sem círculo (seguem
+na lista e nos rankings) e são relatados em `/dados/nao_casados.csv`; corrija com uma linha em `ALIAS`
+(`anp_mapa/geo.py`).
 
-## Uso
+## Publicar na Vercel
+
+1. Na Vercel: **Add New → Project → Import** `RodrigoAiosa/anp`.
+2. Não mude nada: o `vercel.json` já define o build (`python3 scripts/vercel_build.py`), a saída (`public/`) e os cabeçalhos.
+   O script instala `pandas` e `requests` sozinho.
+3. **Deploy.** O build baixa os dados da ANP, gera o site e **só publica se a conferência fechar**
+   (soma dos postos por estado = cadastro); se falhar, o site anterior continua no ar.
+4. *(Atualização semanal)* Em **Settings → Git → Deploy Hooks**, crie um hook para `main` e chame-o toda semana
+   (cron externo ou GitHub Actions), ou use o plano B abaixo.
+
+Variáveis opcionais (Settings → Environment Variables): `UFS` (recorte, ex.: `SC,PR`), `DIAS` (janela de preços,
+padrão 30), `SEMESTRES` (semestres de preços baixados, padrão 2), `SITE_URL` (canonical/Open Graph).
+
+> **Atenção:** o portal gov.br às vezes recusa downloads de provedores de nuvem. Isso **não foi testado a partir da
+> Vercel**. Se o build falhar no download, use o **plano B**: o workflow `atualizar-vercel.yml` gera o site no
+> GitHub e envia pronto com `vercel deploy --prebuilt` (secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`,
+> `VERCEL_PROJECT_ID`). Ou baixe os CSVs à mão e rode `python3 scripts/vercel_build.py --cadastro … --precos …`.
+
+## Desenvolvimento
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
-python -m anp_mapa demo                     # site com dados FICTÍCIOS, sem internet
-python -m anp_mapa tudo                     # baixa da ANP e gera public/
-python -m anp_mapa tudo --uf SC,PR          # só alguns estados (rápido)
-python -m anp_mapa baixar                   # só baixa para dados_anp/
-python -m anp_mapa construir --cadastro dados_anp/cadastro.csv \
-       --precos dados_anp/precos-2026-02.csv --dias 30
+python -m anp_mapa demo        # site com dados FICTÍCIOS, sem internet (mostra um aviso na tela)
+python -m anp_mapa tudo        # baixa da ANP e gera public/
+python -m anp_mapa tudo --uf SC,PR
+python -m anp_mapa construir --cadastro dados_anp/cadastro.csv --precos dados_anp/precos-2026-02.csv
 
-python -m http.server -d public             # abrir http://localhost:8000
-python -m pytest -q                         # testes (offline)
+python -m http.server 3000 -d public    # http://localhost:3000
+python -m pytest -q                     # testes (offline)
 ```
 
-Se o download automático for recusado (o portal gov.br às vezes bloqueia IPs de nuvem), baixe os CSVs
-manualmente no [portal de dados abertos da ANP](https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos)
-e use `construir`.
-
-## Publicar no GitHub Pages
-
-1. Em **Settings → Pages**, escolha **Source: GitHub Actions**.
-2. Rode o workflow **Atualizar e publicar** (aba Actions → *Run workflow*). Depois disso ele roda sozinho
-   toda segunda-feira, às 06:00 de Brasília.
+`public/` é gerado: não edite. Edite `app/`, `anp_mapa/` ou `public_extra/`.
 
 ## Estrutura
 
 ```
-anp_mapa/      baixar.py · tratar.py · geo.py · ranking.py · construir.py · demo.py · __main__.py
-app/           index.html · app.js · style.css · vendor/ (Leaflet, BSD-2)
-data/          municipios.csv (centroides do IBGE; fonte: kelvins/municipios-brasileiros)
-tests/         testes com dados inventados
-.github/       ci.yml (testes) · publicar.yml (atualização semanal + Pages)
+anp_mapa/        baixar · tratar · geo · ranking · construir · demo · __main__
+app/             index.html · app.js · style.css · fonts.css · vendor/ (Leaflet, Inter, Montserrat)
+public_extra/    404, sobre (privacidade), manifest, sw.js, ícone, robots
+scripts/         vercel_build.py
+data/            municipios.csv (centroides do IBGE)
+tests/           testes com dados inventados
+.github/         ci.yml · atualizar-vercel.yml (plano B)
 ```
-`public/` é gerado: não edite.
 
 ## Fontes e licenças
 
 - Dados: ANP, dados abertos (cadastro de revendedores e série histórica de preços/LPC).
 - Coordenadas dos municípios: IBGE, via [kelvins/municipios-brasileiros](https://github.com/kelvins/municipios-brasileiros).
-- Mapa base © colaboradores do OpenStreetMap. Leaflet: BSD-2-Clause (`app/vendor/LEAFLET-LICENSE.txt`).
+- Visual e estrutura derivados do [MapaAntenasAnatel](https://github.com/RodrigoAiosa/MapaAntenasAnatel) (MIT, © João Victor Faraco).
+- Mapa base © colaboradores do OpenStreetMap. Leaflet: BSD-2-Clause. Inter e Montserrat: SIL OFL (licenças em `app/vendor/`).
 - Código: [MIT](LICENSE).

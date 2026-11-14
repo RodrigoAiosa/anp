@@ -1,0 +1,15 @@
+{
+  "name": "anp-mapa-postos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Mapa dos postos de combustíveis do Brasil com dados abertos da ANP, pronto para a Vercel.",
+  "license": "MIT",
+  "repository": "github:RodrigoAiosa/anp",
+  "scripts": {
+    "build": "python3 scripts/vercel_build.py",
+    "build:sc": "python3 scripts/vercel_build.py --uf SC",
+    "demo": "python3 -m anp_mapa demo",
+    "test": "python3 -m pytest -q",
+    "dev": "python3 -m http.server 3000 -d public"
+  }
+}
