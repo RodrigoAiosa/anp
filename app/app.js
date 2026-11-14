@@ -230,16 +230,21 @@
   function renderTop3() {
     var s = escopo();
     $("#tit-top3").textContent = "Top 3 · " + (estado.prod || "—") + " · " + s.rotulo;
+    var aviso = "";
+    if (R.periodo_precos) {
+      var dias = Math.round((new Date((R.gerado_em || "").slice(0, 10) + "T00:00:00Z") - new Date(R.periodo_precos[1] + "T00:00:00Z")) / 864e5);
+      if (dias > 30) aviso = '<div class="msg erro">Atenção: a última coleta de preços publicada pela ANP é de ' + fmtData(R.periodo_precos[1]) + " (há " + dias + " dias). Os preços podem ter mudado.</div>";
+    }
     var r = s.ranking && s.ranking[estado.prod];
     if (!r) {
-      $("#top3").innerHTML = '<div class="msg">Sem preço coletado de ' + esc(estado.prod) + " em " + esc(s.rotulo) + " na janela de " + R.janela_dias + " dias." +
+      $("#top3").innerHTML = aviso + '<div class="msg">Sem preço coletado de ' + esc(estado.prod) + " em " + esc(s.rotulo) + " na janela de " + R.janela_dias + " dias." +
         (s.nivel === "município" ? " Escolha o estado inteiro para ver o ranking dele." : "") + "</div>";
       return;
     }
     var bloco = function (cls, tit, lista) {
       return '<div class="top3-grupo ' + cls + '"><div class="top3-titulo ' + cls + '">' + (cls === "bar" ? "▼" : "▲") + " " + tit + '</div><div class="lista">' + lista.map(itemTop3).join("") + "</div></div>";
     };
-    $("#top3").innerHTML = bloco("bar", "3 mais baratos", r.baratos) + bloco("car", "3 mais caros", r.caros) +
+    $("#top3").innerHTML = aviso + bloco("bar", "3 mais baratos", r.baratos) + bloco("car", "3 mais caros", r.caros) +
       (r.baratos.length < 3 ? '<div class="msg">Há menos de 3 postos com preço neste recorte.</div>' : "");
     $$("#top3 .item-lista").forEach(function (b) {
       b.addEventListener("click", function () {

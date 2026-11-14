@@ -151,3 +151,39 @@ def test_construir_sem_precos_gera_mapa(tmp_path):
     cad, _ = demo.gerar(tmp_path / "d", n_municipios=20)
     r = construir(cad, [], tmp_path / "pub")
     assert r["n_postos"] > 0 and r["produtos"] == [] and r["periodo_precos"] is None
+
+
+def test_extrair_csv_de_zip(tmp_path):
+    import zipfile
+    from anp_mapa.baixar import extrair_csv
+    z = tmp_path / "ca.zip"
+    with zipfile.ZipFile(z, "w") as f:
+        f.writestr("ca-2026-01.csv", "a;b\n1;2\n")
+    out = extrair_csv(z, tmp_path / "ca.csv")
+    assert out.read_text() == "a;b\n1;2\n" and not z.exists()
+
+
+def test_baixar_precos_recua_para_semestre_publicado(tmp_path, monkeypatch):
+    import datetime as dt
+    from anp_mapa import baixar as b
+    tentadas = []
+
+    def falso(url, destino, tentativas=3):
+        tentadas.append(url.rsplit("/", 1)[1])
+        if "ca-2026-01.zip" in url:
+            import zipfile
+            with zipfile.ZipFile(destino, "w") as f:
+                f.writestr("x.csv", "a;b\n")
+            return True
+        return False
+
+    monkeypatch.setattr(b, "baixar", falso)
+    r = b.baixar_precos(tmp_path, quantos=1, hoje=dt.date(2026, 11, 14))
+    assert [p.name for p in r] == ["precos-2026-01.csv"]
+    assert tentadas[:3] == ["ca-2026-02.zip", "ca-2026-02.csv", "ca-2026-01.zip"]
+
+
+def test_precos_ignora_colunas_nao_usadas_e_le_bom(tmp_path):
+    p = _csv_precos(tmp_path, ["S;SC;FLORIANOPOLIS;P1;11.222.333/0001-44;RUA A;1;;CENTRO;88000-000;ETANOL;10/06/2026;4,59;;R$/l;VIBRA"])
+    df = tratar.ler_precos([p])
+    assert len(df) == 1 and df["preco"].item() == 4.59 and df["produto"].item() == "Etanol"

@@ -29,6 +29,10 @@ FAIXA_PRECO = {
 }
 
 
+# colunas dos preços que não usamos: não são lidas, para poupar memória (o CSV tem ~80 MB)
+_DESCARTAR_PRECOS = {"REGIAO SIGLA", "VALOR DE COMPRA", "UNIDADE DE MEDIDA", "COMPLEMENTO"}
+
+
 def _ler_csv(caminho: Path, **kw) -> pd.DataFrame:
     erro = None
     for enc in ("utf-8-sig", "latin-1"):
@@ -103,7 +107,7 @@ def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
         "bandeira": ("BANDEIRA",),
     }
     for p in caminhos:
-        df = _renomear(_ler_csv(p), regras)
+        df = _renomear(_ler_csv(p, usecols=lambda c: chave_texto(c) not in _DESCARTAR_PRECOS), regras)
         faltam = {"uf", "municipio", "cnpj", "produto", "data", "preco"} - set(df.columns)
         if faltam:
             raise ValueError(f"{p.name}: faltam colunas {sorted(faltam)}: layout da ANP mudou?")
