@@ -84,12 +84,16 @@
     <div class="secao" id="secao-comb">
       <h2>Combustível</h2>
       <div class="chips" id="chips-prod" role="radiogroup" aria-label="Combustível"></div>
-      <div class="lista-titulo">Colorir os municípios pelo:</div>
+      <div class="lista-titulo" id="tit-cor">Colorir os municípios pelo:</div>
       <div class="chips" id="chips-cor" role="radiogroup" aria-label="Cor dos círculos">
         <label class="chip"><input type="radio" name="cor" value="preco" checked><span>Preço médio</span></label>
-        <label class="chip"><input type="radio" name="cor" value="postos"><span>Nº de postos</span></label>
+        <label class="chip"><input type="radio" name="cor" value="postos"><span id="rot-postos">Nº de postos</span></label>
       </div>
       <div id="legenda"></div>
+      <div id="bloco-band" hidden>
+        <div class="lista-titulo">Bandeiras (clique para ocultar)</div>
+        <div class="chips" id="chips-band"></div>
+      </div>
     </div>
 
     <div class="secao" id="secao-top3">
@@ -132,6 +136,7 @@
       <span id="hud-zoom">z —</span>
       <button id="copiar-link" type="button" title="Copia um link que reabre esta mesma vista (estado, município, combustível)">Copiar link</button>
     </div>
+    <div id="dica" role="tooltip"></div>
     <div id="ficha" hidden></div>
     <div id="seletor-base" class="controle-mapa" role="group" aria-label="Mapa base"></div>
   </div>

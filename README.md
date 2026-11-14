@@ -93,3 +93,12 @@ tests/           testes com dados inventados
 - Visual e estrutura derivados do [MapaAntenasAnatel](https://github.com/RodrigoAiosa/MapaAntenasAnatel) (MIT, © João Victor Faraco).
 - Mapa base © colaboradores do OpenStreetMap. Leaflet: BSD-2-Clause. Inter e Montserrat: SIL OFL (licenças em `app/vendor/`).
 - Código: [MIT](LICENSE).
+
+
+## Pontos por posto
+
+O mapa desenha **cada posto como um ponto** (canvas, como o mapa de antenas). A posição vem da API de
+Revendedores da ANP (`revendedoresapi.anp.gov.br/v1/combustivel`, campos Latitude/Longitude), baixada no build.
+Coordenadas fora do Brasil, invertidas ou a mais de 150 km do município são descartadas. Posto sem coordenada
+válida aparece no centro do município, com contorno branco. Se a API estiver fora do ar, o build continua e todos
+os postos ficam no centro do município. Para pular a API: `SEM_API_COORDENADAS=1`.

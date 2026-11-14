@@ -96,7 +96,7 @@
     return { min: lo, max: hi > lo ? hi : lo + 0.01, n: v.length };
   }
 
-  function desenhar() {
+  function desenharBolhas() {
     camada.clearLayers();
     circulos = {};
     var esc_ = estado.cor === "preco" ? escalaPreco() : null;
@@ -128,7 +128,7 @@
     });
   }
 
-  function enquadrar() {
+  function enquadrarBolhas() {
     var pts = R.municipios.filter(function (m) {
       return estado.ibge ? m[0] === estado.ibge : (!estado.uf || m[2] === estado.uf);
     }).map(function (m) { return [m[3], m[4]]; });
@@ -137,6 +137,225 @@
     if (pts.length === 1) mapa.flyTo(pts[0], 11, { animate: anim, duration: 0.8 });
     else mapa.flyToBounds(L.latLngBounds(pts).pad(0.12), { maxZoom: 9, animate: anim, duration: 0.8 });
   }
+
+
+  // ----------------------------------------------------- pontos (cada posto, como as ERBs)
+  var modoPontos = false;
+  var PT = null;                       // dados/pontos.json já em typed arrays
+  var camadaPts = null;
+  var BAND_CORES = ["#1687ff", "#F5B400", "#e05050", "#2db86a", "#a78bfa", "#26d7e8", "#e08c00"];
+  var COR_OUTRAS = "#94a3b8", COR_SEM_PRECO = "#64748b";
+  var NBUCKET = 12;
+  var bucketCores = (function () {
+    var a = [];
+    for (var i = 0; i < NBUCKET; i++) { var t = i / (NBUCKET - 1); a.push("hsl(" + Math.round(135 * (1 - t)) + " " + (65 + 10 * t) + "% 50%)"); }
+    return a;
+  })();
+  var filtro = { idx: null, escala: null, ocultas: {} };   // idx: Int32Array dos pontos visíveis (por UF/município/bandeira)
+  var selPt = null;                                        // índice do posto selecionado
+
+  function prepararPontos(d) {
+    var n = d.lat.length;
+    PT = { n: n, uf: d.uf, band: d.band, prod: d.prod, c: d.c, nome: d.n, m: d.m,
+      lat: new Float32Array(n), lon: new Float32Array(n), xm: new Float32Array(n), ym: new Float32Array(n),
+      u: Int16Array.from(d.u), b: Int16Array.from(d.b), e: Uint8Array.from(d.e),
+      preco: new Float32Array(n * Math.max(1, d.prod.length)).fill(NaN), cnpjIdx: {} };
+    for (var i = 0; i < n; i++) {
+      var la = d.lat[i] / 1e5, lo = d.lon[i] / 1e5;
+      PT.lat[i] = la; PT.lon[i] = lo;
+      PT.xm[i] = (lo + 180) / 360;
+      var sn = Math.sin(la * Math.PI / 180);
+      PT.ym[i] = 0.5 - Math.log((1 + sn) / (1 - sn)) / (4 * Math.PI);
+      PT.cnpjIdx[d.c[i]] = i;
+    }
+    (d.p || []).forEach(function (t) { PT.preco[t[0] * d.prod.length + t[1]] = t[2] / 100; });
+  }
+
+  function bandIdxCor(b) { return b < BAND_CORES.length ? BAND_CORES[b] : COR_OUTRAS; }
+  function bandGrupo(b) { return b < BAND_CORES.length ? b : BAND_CORES.length; }   // 0..6 e 7 = outras
+
+  function refazerFiltro() {
+    var ufIdx = estado.uf ? PT.uf.indexOf(estado.uf) : -1;
+    var out = [];
+    for (var i = 0; i < PT.n; i++) {
+      if (ufIdx >= 0 && PT.u[i] !== ufIdx) continue;
+      if (estado.ibge && PT.m[i] !== estado.ibge) continue;
+      if (filtro.ocultas[bandGrupo(PT.b[i])]) continue;
+      out.push(i);
+    }
+    filtro.idx = Int32Array.from(out);
+    // escala de preço: percentis 5-95 do que está filtrado
+    var pi = PT.prod.indexOf(estado.prod), v = [];
+    if (pi >= 0) for (var k = 0; k < filtro.idx.length; k++) { var x = PT.preco[filtro.idx[k] * PT.prod.length + pi]; if (x === x) v.push(x); }
+    if (v.length) {
+      v.sort(function (a, b) { return a - b; });
+      var q = function (f) { return v[Math.min(v.length - 1, Math.floor(f * (v.length - 1)))]; };
+      var lo = q(0.05), hi = q(0.95);
+      filtro.escala = { min: lo, max: hi > lo ? hi : lo + 0.01, n: v.length };
+    } else filtro.escala = null;
+  }
+
+  function legendaPrecoPontos() {
+    var e = filtro.escala;
+    return e
+      ? '<div class="gradiente" aria-hidden="true"></div><div class="gradiente-rotulos"><span>' + fmtPreco(e.min, estado.prod) + "</span><span>" + fmtPreco(e.max, estado.prod) + "</span></div>" +
+        '<div class="nota" style="margin-top:6px">Preço coletado de cada posto (percentis 5 a 95 do recorte). Cinza: posto sem preço de ' + esc(estado.prod) + " na amostra da ANP.</div>"
+      : '<div class="nota">Sem preço coletado de ' + esc(estado.prod || "nenhum combustível") + " neste recorte.</div>";
+  }
+
+  var CamadaPontos = L.Layer.extend({
+    onAdd: function (map) {
+      this._map = map;
+      this._c = L.DomUtil.create("canvas", "camada-antenas leaflet-zoom-hide");
+      this._c.style.position = "absolute";
+      this.getPane("overlayPane").appendChild(this._c);
+      map.on("moveend resize", this.redesenhar, this);
+      map.on("zoomstart", function () { this._c.classList.add("em-zoom"); }, this);
+      map.on("zoomend", function () { this._c.classList.remove("em-zoom"); }, this);
+      this.redesenhar();
+    },
+    onRemove: function (map) {
+      map.off("moveend resize", this.redesenhar, this);
+      L.DomUtil.remove(this._c);
+    },
+    redesenhar: function () {
+      var map = this._map; if (!map || !filtro.idx) return;
+      var pad = 0.1, sz = map.getSize(), W = Math.ceil(sz.x * (1 + 2 * pad)), H = Math.ceil(sz.y * (1 + 2 * pad));
+      var tl = map.containerPointToLayerPoint([-sz.x * pad, -sz.y * pad]);
+      var dpr = Math.min(window.devicePixelRatio || 1, 2), c = this._c;
+      c.width = W * dpr; c.height = H * dpr; c.style.width = W + "px"; c.style.height = H + "px";
+      L.DomUtil.setPosition(c, tl);
+      var ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      var z = map.getZoom(), esc_ = 256 * Math.pow(2, z), o = map.getPixelOrigin();
+      var r = z < 5 ? 1.3 : z < 7 ? 1.8 : z < 9 ? 2.4 : z < 11 ? 3.2 : z < 13 ? 4.5 : 6;
+      var idx = filtro.idx, pi = PT.prod.indexOf(estado.prod), np = Math.max(1, PT.prod.length);
+      var porPreco = estado.cor === "preco", e = filtro.escala;
+      var buckets = [], vis = [], vx = [], vy = [];
+      var nBk = porPreco ? NBUCKET + 1 : BAND_CORES.length + 1;
+      for (var k = 0; k < nBk; k++) buckets.push([]);
+      for (var j = 0; j < idx.length; j++) {
+        var i = idx[j];
+        var x = PT.xm[i] * esc_ - o.x - tl.x, y = PT.ym[i] * esc_ - o.y - tl.y;
+        if (x < -8 || y < -8 || x > W + 8 || y > H + 8) continue;
+        var bk;
+        if (porPreco) {
+          var pr = pi >= 0 ? PT.preco[i * np + pi] : NaN;
+          bk = pr === pr && e ? Math.max(0, Math.min(NBUCKET - 1, Math.floor((pr - e.min) / (e.max - e.min) * NBUCKET))) : NBUCKET;
+        } else bk = bandGrupo(PT.b[i]);
+        buckets[bk].push(x, y, i);
+      }
+      var total = 0;
+      for (var b = 0; b < nBk; b++) {
+        var arr = buckets[b]; if (!arr.length) continue;
+        var cor = porPreco ? (b === NBUCKET ? COR_SEM_PRECO : bucketCores[b]) : (b < BAND_CORES.length ? BAND_CORES[b] : COR_OUTRAS);
+        ctx.globalAlpha = porPreco && b === NBUCKET ? 0.5 : 0.85;
+        ctx.fillStyle = cor;
+        for (var q = 0; q < arr.length; q += 3) {
+          var px = arr[q], py = arr[q + 1], ii = arr[q + 2];
+          total++;
+          vis.push(ii); vx.push(px + tl.x + o.x); vy.push(py + tl.y + o.y);
+          if (r < 2) ctx.fillRect(px - r, py - r, r * 2, r * 2);
+          else {
+            ctx.beginPath(); ctx.arc(px, py, r, 0, 6.2832); ctx.fill();
+            if (!PT.e[ii]) { ctx.globalAlpha = 1; ctx.strokeStyle = "rgba(255,255,255,.8)"; ctx.lineWidth = 1; ctx.stroke(); ctx.globalAlpha = porPreco && b === NBUCKET ? 0.5 : 0.85; }
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      this.visiveis = { i: vis, x: vx, y: vy, esc: esc_ };
+      var el = $("#contador"); if (el) el.textContent = fmtN(total) + " na tela";
+    },
+    maisProximo: function (containerPt, tol) {
+      var v = this.visiveis, map = this._map; if (!v) return -1;
+      var o = map.getPixelOrigin(), mp = map.containerPointToLayerPoint(containerPt);
+      var mx = mp.x + o.x, my = mp.y + o.y, melhor = -1, dm = tol * tol;
+      for (var k = 0; k < v.i.length; k++) {
+        var dx = v.x[k] - mx, dy = v.y[k] - my, d = dx * dx + dy * dy;
+        if (d <= dm) { dm = d; melhor = v.i[k]; }
+      }
+      return melhor;
+    },
+  });
+
+  function atualizarPontos() {
+    refazerFiltro();
+    if (camadaPts) camadaPts.redesenhar();
+    var nB = {}; // contagem por bandeira (com filtro de UF/município, ignorando o filtro de bandeira)
+    renderChipsBandeira();
+  }
+
+  function enquadrarPontos() {
+    var pts = [], ufIdx = estado.uf ? PT.uf.indexOf(estado.uf) : -1;
+    for (var i = 0; i < PT.n; i++) {
+      if (ufIdx >= 0 && PT.u[i] !== ufIdx) continue;
+      if (estado.ibge && PT.m[i] !== estado.ibge) continue;
+      if (PT.e[i] || estado.ibge) pts.push([PT.lat[i], PT.lon[i]]);
+    }
+    if (!pts.length) return;
+    var anim = !MENOS_MOVIMENTO;
+    if (pts.length === 1) mapa.flyTo(pts[0], 13, { animate: anim, duration: 0.8 });
+    else mapa.flyToBounds(L.latLngBounds(pts).pad(0.1), { maxZoom: estado.ibge ? 13 : 10, animate: anim, duration: 0.8 });
+  }
+
+  function renderChipsBandeira() {
+    var box = $("#chips-band"); if (!box) return;
+    var ufIdx = estado.uf ? PT.uf.indexOf(estado.uf) : -1, cont = {};
+    for (var i = 0; i < PT.n; i++) {
+      if (ufIdx >= 0 && PT.u[i] !== ufIdx) continue;
+      if (estado.ibge && PT.m[i] !== estado.ibge) continue;
+      var g = bandGrupo(PT.b[i]); cont[g] = (cont[g] || 0) + 1;
+    }
+    var h = "";
+    for (var g2 = 0; g2 <= BAND_CORES.length; g2++) {
+      if (g2 === BAND_CORES.length && !cont[g2]) continue;
+      var nome = g2 < BAND_CORES.length ? (PT.band[g2] || "—") : "Outras bandeiras";
+      var cor = g2 < BAND_CORES.length ? BAND_CORES[g2] : COR_OUTRAS;
+      h += '<label class="chip"><input type="checkbox" data-g="' + g2 + '"' + (filtro.ocultas[g2] ? "" : " checked") + '><span class="bolinha" style="background:' + cor + ';color:' + cor + '"></span><span>' + esc(nome) + ' <span class="n">' + fmtN(cont[g2] || 0) + "</span></span></label>";
+    }
+    box.innerHTML = h;
+    $$("#chips-band input").forEach(function (i) {
+      i.addEventListener("change", function () { filtro.ocultas[i.dataset.g] = !i.checked; refazerFiltro(); camadaPts.redesenhar(); renderLegenda(); });
+    });
+  }
+
+  function ligarInteracaoPontos() {
+    var dica = $("#dica"), agendado = false, ult = null;
+    function quadro() {
+      agendado = false; if (!ult) return;
+      var i = camadaPts.maisProximo(ult.containerPoint, 9);
+      if (i < 0) { dica.classList.remove("ligada"); mapa.getContainer().style.cursor = ""; return; }
+      var pi = PT.prod.indexOf(estado.prod), pr = pi >= 0 ? PT.preco[i * Math.max(1, PT.prod.length) + pi] : NaN;
+      dica.innerHTML = '<div class="dica-op"><span class="bolinha" style="background:' + bandIdxCor(PT.b[i]) + '"></span><span>' + esc(PT.nome[i]) + "</span></div>" +
+        '<div class="dica-sub">' + esc(PT.band[PT.b[i]]) + " · " + esc(PT.uf[PT.u[i]]) + (PT.e[i] ? "" : " · posição aproximada (centro do município)") + "</div>" +
+        (pr === pr ? '<div class="dica-sub">' + esc(estado.prod) + ": <b>" + fmtPreco(pr, estado.prod) + "</b></div>" : "");
+      var tam = mapa.getSize(), x = ult.containerPoint.x + 16, y = ult.containerPoint.y + 14;
+      if (x + 260 > tam.x) x = ult.containerPoint.x - 16 - dica.offsetWidth;
+      if (y + 90 > tam.y) y = ult.containerPoint.y - 14 - dica.offsetHeight;
+      dica.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
+      dica.classList.add("ligada"); mapa.getContainer().style.cursor = "pointer";
+    }
+    mapa.on("mousemove", function (e) { ult = e; if (!agendado) { agendado = true; L.Util.requestAnimFrame(quadro); } });
+    mapa.on("mouseout movestart zoomstart", function () { dica.classList.remove("ligada"); });
+    mapa.on("click", function (e) {
+      var i = camadaPts.maisProximo(e.containerPoint, 11); if (i < 0) return;
+      var uf = PT.uf[PT.u[i]], ibge = PT.m[i], cnpj = PT.c[i];
+      if (!ibge) { return; }
+      selecionar(uf, ibge, true).then(function () { abrirFichaPosto(cnpj); });
+    });
+  }
+
+  function ativarPontos() {
+    modoPontos = true;
+    camada.clearLayers();
+    camadaPts = new CamadaPontos(); camadaPts.addTo(mapa);
+    ligarInteracaoPontos();
+    $("#bloco-band").hidden = false;
+    $("#rot-postos").textContent = "Bandeira";
+    $("#tit-cor").textContent = "Colorir cada posto pelo:";
+    var f = $("#fonte"); if (f) f.innerHTML = "<strong>Dado público</strong> Cadastro e Levantamento de Preços da ANP; posição de cada posto da API de Revendedores da ANP. Posto com contorno branco não tem coordenada na ANP e aparece no centro do município. <a href=\"sobre\">Fontes, limites e privacidade</a>";
+  }
+  function desenhar() { if (modoPontos) atualizarPontos(); else desenharBolhas(); }
+  function enquadrar() { if (modoPontos) enquadrarPontos(); else enquadrarBolhas(); }
 
   // ----------------------------------------------------------------- dados
   function json(url) {
@@ -207,6 +426,7 @@
 
   function renderLegenda() {
     var el = $("#legenda");
+    if (modoPontos) { el.innerHTML = estado.cor === "preco" ? legendaPrecoPontos() : ""; return; }
     if (estado.cor === "preco") {
       var e = escalaPreco();
       el.innerHTML = e
@@ -597,6 +817,10 @@
       R.ufs.forEach(function (u) { var o = document.createElement("option"); o.value = u.uf; o.textContent = u.nome + " (" + fmtN(u.n) + ")"; $("#uf").appendChild(o); });
 
       renderProdutos(); renderTotais(); configurarPainel();
+      var pPontos = (R.pontos_exatos || 0) > 0 ? json("dados/pontos.json").then(function (d) { prepararPontos(d); return true; }).catch(function () { return false; }) : Promise.resolve(false);
+      return pPontos.then(function (ok) { if (ok) ativarPontos(); return d; });
+    }).then(function (d) {
+      var h = lerHash();
       $("#uf").addEventListener("change", function (e) { e.target.value ? selecionar(e.target.value, "") : limparSelecao(); });
       $("#mun").addEventListener("change", function (e) { selecionar(estado.uf, e.target.value); });
       $("#limpar").addEventListener("click", limparSelecao);
