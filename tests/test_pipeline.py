@@ -178,6 +178,7 @@ def test_baixar_precos_recua_para_semestre_publicado(tmp_path, monkeypatch):
         return False
 
     monkeypatch.setattr(b, "baixar", falso)
+    monkeypatch.setattr(b, "baixar_precos_mensais", lambda *a, **k: [])   # sem arquivos mensais: cai nos semestrais
     r = b.baixar_precos(tmp_path, quantos=1, hoje=dt.date(2026, 11, 14))
     assert [p.name for p in r] == ["precos-2026-01.csv"]
     assert tentadas[:3] == ["ca-2026-02.zip", "ca-2026-02.csv", "ca-2026-01.zip"]
@@ -187,3 +188,33 @@ def test_precos_ignora_colunas_nao_usadas_e_le_bom(tmp_path):
     p = _csv_precos(tmp_path, ["S;SC;FLORIANOPOLIS;P1;11.222.333/0001-44;RUA A;1;;CENTRO;88000-000;ETANOL;10/06/2026;4,59;;R$/l;VIBRA"])
     df = tratar.ler_precos([p])
     assert len(df) == 1 and df["preco"].item() == 4.59 and df["produto"].item() == "Etanol"
+
+
+def test_descobrir_mensais_le_links_da_pagina():
+    from anp_mapa import baixar as b
+    base = "/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsan/2026/"
+    html = "".join(f'<a href="{base}precos-{g}-{m:02d}.csv">x</a>' for g in b.GRUPOS_MENSAIS for m in (9, 10)) \
+        + '<a href="/outro/ca-2022-01.csv">y</a>'
+    r = b.descobrir_mensais(html)
+    assert sorted(r) == [(2026, 9), (2026, 10)]
+    assert set(r[(2026, 10)]) == {"gasolina-etanol", "diesel-gnv", "glp"}
+    assert r[(2026, 10)]["glp"].startswith("https://www.gov.br/anp/")
+
+
+def test_baixar_precos_mensais_usa_os_meses_mais_recentes(tmp_path, monkeypatch):
+    import datetime as dt
+    from anp_mapa import baixar as b
+    tentadas = []
+
+    def falso(url, destino, tentativas=3):
+        tentadas.append(destino.name)
+        return "2026-11" not in destino.name   # novembro ainda não publicado
+    monkeypatch.setattr(b, "baixar", falso)
+
+    class Resp:  # página fora do ar: usa o padrão de nome
+        def raise_for_status(self): raise b.requests.RequestException("sem rede")
+    monkeypatch.setattr(b.requests, "get", lambda *a, **k: Resp())
+    r = b.baixar_precos_mensais(tmp_path, meses=2, hoje=dt.date(2026, 11, 14))
+    nomes = sorted(p.name for p in r)
+    assert nomes[0].startswith("precos-2026-09") and nomes[-1].startswith("precos-2026-10")
+    assert len(nomes) == 6   # 2 meses x 3 grupos
