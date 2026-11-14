@@ -629,15 +629,70 @@
     }).join("") + postos.map(function (x) {
       return '<button type="button" class="item-lista" data-t="p" data-uf="' + esc(estado.uf) + '" data-ibge="' + esc(x.m.ibge) + '" data-cnpj="' + esc(x.p[5]) + '"><span>⛽ <strong>' + esc(x.p[0]) + '</strong></span><span class="sub">' + esc(x.m.nome) + "</span></button>";
     }).join("");
-    if (!h) h = '<div class="msg">Nada encontrado' + (estado.uf ? "" : ". Para achar um posto, escolha antes o estado") + ".</div>";
+    var bruto = $("#entrada").value.trim();
+    if (!h && bruto.length < 3) h = '<div class="msg">Digite pelo menos 3 letras.</div>';
+    if (bruto.length >= 3) {
+      h += '<div class="lista-titulo">Endereços e lugares</div><div id="res-end">' + htmlEnderecos(bruto) + "</div>";
+      agendarEnderecos(bruto, false);
+    }
     box.innerHTML = h; box.hidden = false;
+    ligarResultados();
+  }
+  function ligarResultados() {
+    var box = $("#resultados");
     $$("#resultados .item-lista").forEach(function (b) {
+      if (b.dataset.lig) return; b.dataset.lig = "1";
       b.addEventListener("click", function () {
+        if (b.dataset.t === "e") { irParaEndereco(b); return; }
         if (b.dataset.t === "m") registrarRecente((b.querySelector("strong").textContent || "").split(" – ")[0]);
         box.hidden = true; $("#entrada").value = "";
         selecionar(b.dataset.uf, b.dataset.ibge).then(function () { if (b.dataset.t === "p") abrirFichaPosto(b.dataset.cnpj); });
       });
     });
+  }
+
+  // ------------------------------------------------------- endereços e lugares (OpenStreetMap / Nominatim)
+  // Ao parar de digitar (ou ao apertar Enter), o texto é consultado no Nominatim e os endereços
+  // encontrados aparecem para você escolher; escolher um deles marca o pino e lista os postos em volta.
+  var endCache = {}, endToken = 0, endTimer = 0, endEnter = false;
+  function htmlEnderecos(q) {
+    var c = endCache[q.toLowerCase()];
+    if (c === undefined) return '<div class="msg">Procurando endereços…</div>';
+    if (!c.length) return '<div class="msg">Nenhum endereço ou lugar encontrado para “' + esc(q) + '”. Tente incluir a cidade (ex.: “MASP, São Paulo”).</div>';
+    return c.map(function (r, k) {
+      var partes = String(r.display_name || "").replace(/, Brasil$/, "").split(", "), nome = r.name || partes[0] || "Local";
+      var resto = partes.filter(function (x) { return x !== nome && !/^\d{5}-?\d{3}$/.test(x); }).slice(0, 4).join(", ");
+      return '<button type="button" class="item-lista" data-t="e" data-k="' + k + '" data-la="' + esc(r.lat) + '" data-lo="' + esc(r.lon) + '" data-nome="' + esc(nome) + '"><span>📌 <strong>' + esc(nome) + '</strong></span><span class="sub">' + esc(resto) + "</span></button>";
+    }).join("");
+  }
+  function agendarEnderecos(q, ja) {
+    clearTimeout(endTimer);
+    var chave = q.toLowerCase();
+    if (endCache[chave] !== undefined) { if (endEnter) { endEnter = false; var f = $("#res-end .item-lista"); if (f) f.click(); } return; }
+    var tk = ++endToken;
+    endTimer = setTimeout(function () {
+      var params = { q: q, limit: "6" };
+      if (mapa.getZoom() >= 8) { var b = mapa.getBounds(); params.viewbox = [b.getWest(), b.getNorth(), b.getEast(), b.getSouth()].join(","); }
+      nominatimBusca(params).then(function (l) {
+        l = l.filter(function (r) { return dentroDoBrasil(parseFloat(r.lat), parseFloat(r.lon)); });
+        endCache[chave] = l;
+        if (tk !== endToken || $("#entrada").value.trim().toLowerCase() !== chave) return;
+        var alvo = $("#res-end"); if (!alvo) return;
+        alvo.innerHTML = htmlEnderecos(q); ligarResultados();
+        if (endEnter) { endEnter = false; var f = alvo.querySelector(".item-lista"); if (f) f.click(); }
+      });
+    }, ja ? 0 : 900);
+  }
+  function irParaPonto(la, lo, rotulo) {
+    if (modoPontos) return procurarRaio({ lat: la, lon: lo, exato: true, rotulo: rotulo });
+    var c = R.municipios.map(function (m) { return { m: m, d: km(la, lo, m[3], m[4]) }; }).sort(function (a, z) { return a.d - z.d; })[0];
+    return procurarProximosAprox({ lat: la, lon: lo, ibge: c.m[0], cep: null, exato: true, rotulo: rotulo });
+  }
+  function irParaEndereco(b) {
+    var la = parseFloat(b.dataset.la), lo = parseFloat(b.dataset.lo), q = $("#entrada").value.trim();
+    registrarRecente(q);
+    $("#resultados").hidden = true; $("#entrada").value = "";
+    irParaPonto(la, lo, b.dataset.nome + " · endereço do OpenStreetMap; arraste o pino para ajustar");
   }
 
   // ------------------------------------------------------- postos mais próximos
@@ -1143,8 +1198,10 @@
       $("#entrada").addEventListener("input", function () { clearTimeout(tBusca); tBusca = setTimeout(buscar, 120); });
       $("#entrada").addEventListener("keydown", function (e) {
         if (e.key !== "Enter") return;
-        var d = $("#entrada").value.replace(/\D/g, ""), prim = $("#resultados .item-lista");
-        if (d.length === 8 && !/[a-z]/i.test($("#entrada").value)) buscarCEP(d); else if (prim) prim.click();
+        var d = $("#entrada").value.replace(/\D/g, ""), prim = $("#resultados .item-lista"), bruto = $("#entrada").value.trim();
+        if (d.length === 8 && !/[a-z]/i.test(bruto)) buscarCEP(d);
+        else if (prim) prim.click();
+        else if (bruto.length >= 3) { endEnter = true; buscar(); agendarEnderecos(bruto, true); }
       });
       $("#buscar").addEventListener("click", function () { $("#entrada").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); });
       $$(".exemplo").forEach(function (b) { b.addEventListener("click", function () { $("#entrada").value = b.dataset.q; buscar(); if (/[a-z]/i.test(b.dataset.q)) { var f = $("#resultados .item-lista"); if (f) f.click(); } else buscarCEP(b.dataset.q); }); });

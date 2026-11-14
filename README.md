@@ -111,3 +111,7 @@ os postos ficam no centro do município. Para pular a API: `SEM_API_COORDENADAS=
 - **Tour com missões:** na primeira visita, um sumário gamificado (`app/tour.js`, adaptado do mapa de antenas) apresenta cada item da tela como uma missão, com XP e níveis. O botão "Missões" no topo reabre o sumário a qualquer hora (progresso em `anp.tour.v1`).
 
 - **Postos favoritos:** na ficha de um posto, "Favoritar este posto" o guarda na mesma lista de Meus lugares (com ⛽); um toque reabre a ficha e leva o mapa até ele.
+
+## Busca por endereço e lugar
+
+No campo "Encontrar", ao digitar 3 letras ou mais (ou apertar Enter), os endereços e lugares do OpenStreetMap (Nominatim) aparecem para escolher, por exemplo "MASP". Escolher um deles marca o pino e lista os postos num raio de 1 a 30 km. Os municípios e postos já carregados continuam aparecendo na hora, acima dos endereços.
