@@ -654,21 +654,77 @@
     return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { clearTimeout(t); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
   }
   function municipioPorIbge(ibge) { return R.municipios.filter(function (m) { return m[0] === ibge; })[0] || null; }
+  function semAcento(t) { return String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); }
+  function municipioDoCEP(v) {   // pelo código IBGE; se não achar (código novo/ausente), pelo nome + UF
+    var m = municipioPorIbge(String(v.ibge || ""));
+    if (m) return m;
+    var nome = semAcento(v.localidade), uf = String(v.uf || "").toUpperCase();
+    return R.municipios.filter(function (x) { return x[2] === uf && semAcento(x[1]) === nome; })[0] || null;
+  }
 
+  // ---- localização do CEP: provedores com coordenada da rua, validados contra o município
+  var CEP_MAX_KM = 60;   // ponto a mais que isso do centro do município é descartado (erro de geocodificação)
+  function numOuNulo(x) { var n = parseFloat(x); return isFinite(n) ? n : null; }
+  function pontoValido(la, lo, m, fonte) {
+    la = numOuNulo(la); lo = numOuNulo(lo);
+    if (la == null || lo == null || (la === 0 && lo === 0)) return null;
+    if (la < -34 || la > 6 || lo < -74 || lo > -28) return null;   // fora do Brasil
+    var dc = km(la, lo, m[3], m[4]);
+    if (dc > CEP_MAX_KM) return null;                                // em outra cidade: dado errado
+    if (dc < 0.3) return null;                                       // igual ao centro da cidade: provedor sem a rua, não é preciso
+    return { lat: la, lon: lo, fonte: fonte };
+  }
+  function geocodarCEP(cep, v, m) {
+    var a = fetchJSON("https://cep.awesomeapi.com.br/json/" + cep, 5000)
+      .then(function (r) { return pontoValido(r && r.lat, r && r.lng, m, "AwesomeAPI"); }).catch(function () { return null; });
+    var b = fetchJSON("https://brasilapi.com.br/api/cep/v2/" + cep, 5000)
+      .then(function (r) { var c = (r && r.location && r.location.coordinates) || {}; return pontoValido(c.latitude, c.longitude, m, "BrasilAPI"); }).catch(function () { return null; });
+    return Promise.all([a, b]).then(function (rs) {
+      if (rs[0] && rs[1]) {
+        // dois provedores discordam (> 2 km): fica o mais próximo dos postos de CEP vizinho
+        if (km(rs[0].lat, rs[0].lon, rs[1].lat, rs[1].lon) <= 2) return rs[0];
+        return posicaoDoCEP(m, parseInt(cep, 10)).then(function (h) {
+          if (!h[2]) return rs[0];
+          return km(rs[0].lat, rs[0].lon, h[0], h[1]) <= km(rs[1].lat, rs[1].lon, h[0], h[1]) ? rs[0] : rs[1];
+        });
+      }
+      if (rs[0] || rs[1]) return rs[0] || rs[1];
+      // último recurso de geocodificação: OpenStreetMap pelo CEP e, depois, pela rua
+      var base = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR";
+      var porCep = fetchJSON(base + "&postalcode=" + encodeURIComponent(cep.replace(/^(\d{5})(\d{3})$/, "$1-$2")) + "&city=" + encodeURIComponent(v.localidade || m[1]) + "&state=" + encodeURIComponent(v.uf || m[2]), 6000)
+        .then(function (r) { return r && r[0] ? pontoValido(r[0].lat, r[0].lon, m, "OpenStreetMap") : null; }).catch(function () { return null; });
+      return porCep.then(function (pt) {
+        if (pt || !v.logradouro) return pt;
+        return fetchJSON(base + "&street=" + encodeURIComponent(v.logradouro) + "&city=" + encodeURIComponent(v.localidade || m[1]) + "&state=" + encodeURIComponent(v.uf || m[2]), 6000)
+          .then(function (r) { return r && r[0] ? pontoValido(r[0].lat, r[0].lon, m, "OpenStreetMap") : null; }).catch(function () { return null; });
+      });
+    });
+  }
+
+  var cepEmCurso = null;
   function buscarCEP(cep) {
     cep = String(cep).replace(/\D/g, "");
     if (cep.length !== 8) { setErro("Digite um CEP com 8 dígitos."); return; }
+    if (cepEmCurso === cep) return;   // Enter + digitação disparam duas vezes: uma consulta só
+    cepEmCurso = cep;
     setErro("Consultando o CEP…", true);
     fetchJSON("https://viacep.com.br/ws/" + cep + "/json/").then(function (v) {
       if (v.erro) { setErro("CEP não encontrado. Confira os números."); return; }
-      var m = municipioPorIbge(String(v.ibge));
+      var m = municipioDoCEP(v);
       if (!m) { setErro("Achei o CEP (" + (v.localidade || "") + "/" + (v.uf || "") + "), mas não localizei o município no mapa."); return; }
       setErro("");
       registrarRecente(cep.replace(/^(\d{5})(\d{3})$/, "$1-$2"));
       var rotulo = "CEP " + cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") + [v.logradouro, v.bairro].filter(Boolean).map(function (x) { return " · " + x; }).join("") + " · " + m[1] + "/" + m[2];
-      if (modoPontos) return posicaoDoCEP(m, parseInt(cep, 10)).then(function (pos) { return procurarRaio({ lat: pos[0], lon: pos[1], rotulo: rotulo + (pos[2] ? " · pino perto dos postos de CEP vizinho; arraste para ajustar" : " · pino no centro do município; arraste para ajustar"), exato: false }); });
-      return procurarProximos({ lat: m[3], lon: m[4], ibge: m[0], cep: parseInt(cep, 10), rotulo: rotulo, exato: false });
-    }).catch(function () { setErro("Não consegui consultar o CEP agora (ViaCEP fora do ar ou sem internet). Tente de novo ou escolha o município."); });
+      var cepNum = parseInt(cep, 10);
+      return geocodarCEP(cep, v, m).then(function (g) {
+        if (modoPontos) {
+          if (g) return procurarRaio({ lat: g.lat, lon: g.lon, rotulo: rotulo + " · localizado pelo CEP (" + g.fonte + "); arraste para ajustar", exato: true });
+          return posicaoDoCEP(m, cepNum).then(function (pos) { return procurarRaio({ lat: pos[0], lon: pos[1], rotulo: rotulo + (pos[2] ? " · posição estimada pelos postos de CEP vizinho; arraste para ajustar" : " · pino no centro do município; arraste para ajustar"), exato: false }); });
+        }
+        return procurarProximos({ lat: g ? g.lat : m[3], lon: g ? g.lon : m[4], ibge: m[0], cep: cepNum, rotulo: rotulo, exato: !!g });
+      });
+    }).catch(function () { setErro("Não consegui consultar o CEP agora (ViaCEP fora do ar ou sem internet). Tente de novo ou escolha o município."); })
+      .then(function () { cepEmCurso = null; });
   }
 
   function usarLocal() {
