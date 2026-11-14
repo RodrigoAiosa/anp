@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapa de Postos de Combustíveis do Brasil — dados ANP</title>
+<meta name="description" content="Todos os postos revendedores cadastrados na ANP, por estado e município, com os 3 mais baratos e os 3 mais caros de cada combustível.">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="demo" hidden>⚠️ DADOS FICTÍCIOS — versão de demonstração gerada sem acesso à ANP.</div>
+<aside id="painel">
+  <header>
+    <h1>⛽ Postos do Brasil</h1>
+    <p class="fonte">Fonte: ANP (dados abertos). <span id="atualizado"></span></p>
+  </header>
+
+  <section class="filtros">
+    <label>Estado
+      <select id="uf"><option value="">Brasil (todos)</option></select>
+    </label>
+    <label>Município
+      <select id="mun" disabled><option value="">Todos do estado</option></select>
+    </label>
+    <label>Combustível
+      <select id="prod"></select>
+    </label>
+  </section>
+
+  <section id="totais" class="totais" aria-live="polite"></section>
+
+  <section>
+    <h2 id="tit-rank">Top 3 por preço</h2>
+    <div id="rank"></div>
+  </section>
+
+  <section>
+    <h2>Postos cadastrados</h2>
+    <input id="busca" type="search" placeholder="Filtrar por nome, bandeira, bairro, CNPJ…" disabled>
+    <div id="lista-info" class="info"></div>
+    <ul id="lista"></ul>
+    <button id="mais" hidden>Mostrar mais</button>
+  </section>
+
+  <footer>
+    <p>Um posto aparece no <b>centro do município</b>: a ANP não publica a coordenada de cada posto nestes arquivos.
+    O preço vem do Levantamento de Preços (LPC), que cobre só parte dos postos e é atualizado semanalmente.</p>
+  </footer>
+</aside>
+<main id="mapa" aria-label="Mapa dos municípios com postos"></main>
+<script src="vendor/leaflet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
