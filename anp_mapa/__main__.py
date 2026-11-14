@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
 from .baixar import baixar_tudo
+from .coordenadas import baixar_coordenadas
 from .construir import construir
 from .demo import gerar
 
@@ -14,6 +16,7 @@ def _resumo(r: dict) -> None:
     print(f"\nPostos no cadastro: {r['n_postos']:,}".replace(",", "."))
     print(f"Com preço recente:  {r['n_postos_com_preco']:,}".replace(",", "."))
     print(f"Sem coordenada (município não casado): {r['n_sem_coordenada']}")
+    print(f"Pontos no mapa: {r['pontos']:,} (posição exata: {r['pontos_exatos']:,})".replace(",", "."))
     if r["periodo_precos"]:
         print(f"Preços de {r['periodo_precos'][0]} a {r['periodo_precos'][1]}")
 
@@ -34,6 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     c = sub.add_parser("construir", help="gera o site a partir de arquivos já baixados")
     c.add_argument("--cadastro", type=Path, required=True)
     c.add_argument("--precos", type=Path, nargs="*", default=[])
+    c.add_argument("--coordenadas", type=Path, help="coordenadas.csv (cnpj,lat,lon) já baixado")
     opcoes_build(c)
 
     t = sub.add_parser("tudo", help="baixa e constrói")
@@ -51,13 +55,14 @@ def main(argv: list[str] | None = None) -> int:
     if a.cmd == "baixar":
         baixar_tudo(a.pasta, a.semestres)
     elif a.cmd == "construir":
-        _resumo(construir(a.cadastro, a.precos, a.saida, a.dias, ufs=ufs))
+        _resumo(construir(a.cadastro, a.precos, a.saida, a.dias, ufs=ufs, coordenadas=a.coordenadas))
     elif a.cmd == "tudo":
         cad, prc = baixar_tudo(a.pasta, a.semestres)
-        _resumo(construir(cad, prc, a.saida, a.dias, ufs=ufs))
+        coord = None if os.environ.get("SEM_API_COORDENADAS") == "1" else baixar_coordenadas(a.pasta)
+        _resumo(construir(cad, prc, a.saida, a.dias, ufs=ufs, coordenadas=coord))
     elif a.cmd == "demo":
-        cad, prc = gerar(a.pasta)
-        _resumo(construir(cad, [prc], a.saida, a.dias, demo=True, ufs=ufs))
+        cad, prc, coord = gerar(a.pasta)
+        _resumo(construir(cad, [prc], a.saida, a.dias, demo=True, ufs=ufs, coordenadas=coord))
     print(f"\nSite em {a.saida}/  (abra com: python -m http.server -d {a.saida})")
     return 0
 

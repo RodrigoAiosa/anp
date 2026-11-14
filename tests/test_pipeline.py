@@ -118,9 +118,9 @@ def test_top3_confere_com_forca_bruta():
 
 
 def test_construir_demo_fim_a_fim(tmp_path):
-    cad, prc = demo.gerar(tmp_path / "d", n_municipios=60)
+    cad, prc, coord = demo.gerar(tmp_path / "d", n_municipios=60)
     out = tmp_path / "pub"
-    r = construir(cad, [prc], out, demo=True)
+    r = construir(cad, [prc], out, demo=True, coordenadas=coord)
     assert (out / "index.html").exists() and (out / "app.js").exists() and (out / "vendor" / "leaflet.js").exists()
     idx = (out / "index.html").read_text(encoding="utf-8")
     assert 'rel="manifest"' in idx and "serviceWorker" in idx
@@ -148,7 +148,7 @@ def test_construir_demo_fim_a_fim(tmp_path):
 
 
 def test_construir_sem_precos_gera_mapa(tmp_path):
-    cad, _ = demo.gerar(tmp_path / "d", n_municipios=20)
+    cad, _, _ = demo.gerar(tmp_path / "d", n_municipios=20)
     r = construir(cad, [], tmp_path / "pub")
     assert r["n_postos"] > 0 and r["produtos"] == [] and r["periodo_precos"] is None
 

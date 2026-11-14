@@ -9,6 +9,7 @@ import re
 import shutil
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from .geo import carregar_municipios, casar_municipio
@@ -29,14 +30,53 @@ def _dump(obj, caminho: Path) -> None:
     caminho.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
+LIMITE_KM_CENTRO = 150   # coordenada da API a mais que isto do centro do município é tratada como errada
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    r = np.pi / 180
+    a = np.sin((lat2 - lat1) * r / 2) ** 2 + np.cos(lat1 * r) * np.cos(lat2 * r) * np.sin((lon2 - lon1) * r / 2) ** 2
+    return 12742 * np.arcsin(np.sqrt(a))
+
+
+def aplicar_coordenadas(postos: pd.DataFrame, coordenadas: Path | None) -> tuple[pd.DataFrame, dict]:
+    """Define `plat`, `plon` e `exato` por posto. Sem coordenada (ou com coordenada absurda), o posto
+    fica no centro do município e `exato` é False."""
+    p = postos.copy()
+    p["plat"], p["plon"], p["exato"] = p["lat"], p["lon"], False
+    info = {"api": 0, "aceitas": 0, "descartadas_longe": 0}
+    if coordenadas is None:
+        return p, info
+    c = pd.read_csv(coordenadas, dtype={"cnpj": str}).dropna(subset=["lat", "lon"])
+    c["cnpj"] = c["cnpj"].str.zfill(14)
+    c = c.sort_values("acuracia_m", na_position="last").drop_duplicates("cnpj")
+    info["api"] = len(c)
+    c = c[["cnpj", "lat", "lon"]].rename(columns={"lat": "elat", "lon": "elon"})
+    p = p.merge(c, on="cnpj", how="left")
+    tem = p["elat"].notna()
+    dist = pd.Series(np.nan, index=p.index)
+    ref = tem & p["lat"].notna()
+    dist[ref] = _haversine_km(p.loc[ref, "elat"].astype(float), p.loc[ref, "elon"].astype(float),
+                              p.loc[ref, "lat"].astype(float), p.loc[ref, "lon"].astype(float))
+    bom = tem & (dist.isna() | (dist <= LIMITE_KM_CENTRO))
+    info["aceitas"] = int(bom.sum())
+    info["descartadas_longe"] = int((tem & ~bom).sum())
+    p.loc[bom, "plat"], p.loc[bom, "plon"], p.loc[bom, "exato"] = p.loc[bom, "elat"], p.loc[bom, "elon"], True
+    return p.drop(columns=["elat", "elon"]), info
+
+
 def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
-              demo: bool = False, ufs: list[str] | None = None) -> dict:
+              demo: bool = False, ufs: list[str] | None = None, coordenadas: Path | None = None) -> dict:
     """Gera o site em `saida` e devolve o resumo (também gravado em dados/resumo.json)."""
     municipios = carregar_municipios()
     postos = ler_cadastro(cadastro)
     if ufs:
         postos = postos[postos["uf"].isin(ufs)]
     postos = casar_municipio(postos, municipios)
+    postos, info_coord = aplicar_coordenadas(postos, coordenadas)
+    if coordenadas is not None:
+        print(f"Coordenadas da API: {info_coord['api']} postos; aceitas {info_coord['aceitas']}; "
+              f"descartadas por estarem a mais de {LIMITE_KM_CENTRO} km do município: {info_coord['descartadas_longe']}")
 
     if precos:
         todos = ler_precos(precos)
@@ -77,7 +117,8 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
         for (cod, nome, lat, lon), gm in g.groupby(["codigo_ibge", "municipio_nome", "lat", "lon"], dropna=False):
             lista = [
                 [r.razao, r.bandeira, ", ".join(x for x in (r.endereco, r.complemento) if x),
-                 r.bairro, r.cep, r.cnpj, mapa_preco.get(r.cnpj, {})]
+                 r.bairro, r.cep, r.cnpj, mapa_preco.get(r.cnpj, {}),
+                 round(float(r.plat), 5) if r.exato else None, round(float(r.plon), 5) if r.exato else None]
                 for r in gm.sort_values("razao").itertuples()
             ]
             tem = pd.notna(cod)
@@ -101,6 +142,28 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
          .sort_values("postos", ascending=False)
          .to_csv(saida / "dados" / "nao_casados.csv", index=False))
 
+    pts = postos.dropna(subset=["plat", "plon"]).sort_values(["uf", "cnpj"]).reset_index(drop=True)
+    uf_lista = sorted(pts["uf"].unique())
+    band_cont = pts["bandeira"].str.upper().value_counts()
+    band_lista = list(band_cont.index)
+    prod_lista = ordem_produtos(rec["produto"].unique()) if len(rec) else []
+    esparso = []
+    if prod_lista:
+        indice = {c: i for i, c in enumerate(pts["cnpj"])}
+        for cnpj_, d_ in mapa_preco.items():
+            i = indice.get(cnpj_)
+            if i is None:
+                continue
+            for prod_, (preco_, _) in d_.items():
+                esparso.append([i, prod_lista.index(prod_), int(round(preco_ * 100))])
+    _dump({
+        "uf": uf_lista, "band": band_lista, "prod": prod_lista,
+        "lat": [int(round(v * 1e5)) for v in pts["plat"]], "lon": [int(round(v * 1e5)) for v in pts["plon"]],
+        "u": [uf_lista.index(v) for v in pts["uf"]], "b": [band_lista.index(v.upper()) for v in pts["bandeira"]],
+        "e": [1 if v else 0 for v in pts["exato"]], "c": list(pts["cnpj"]), "n": list(pts["razao"]),
+        "m": [None if pd.isna(v) else str(v) for v in pts["codigo_ibge"]], "p": esparso,
+    }, saida / "dados" / "pontos.json")
+
     if len(postos) == 0:
         raise SystemExit("ERRO: nenhum posto lido do cadastro. Nada será publicado.")
     if sum(u["n"] for u in resumo_ufs) != len(postos):
@@ -118,6 +181,7 @@ def construir(cadastro: Path, precos: list[Path], saida: Path, dias: int = 30,
         "ufs": sorted(resumo_ufs, key=lambda x: x["uf"]),
         "ranking_br": brasil, "municipios": marcadores,
         "bandeiras": [[k, int(v)] for k, v in bandeiras.items()],
+        "pontos": int(len(pts)), "pontos_exatos": int(pts["exato"].sum()),
     }
     _dump(resumo, saida / "dados" / "resumo.json")
     _publicar_extras(saida, resumo, ufs)
