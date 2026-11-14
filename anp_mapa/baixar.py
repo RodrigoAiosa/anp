@@ -28,7 +28,7 @@ URL_PRECOS = BASE + "/shpc/dsas/ca/ca-{ano}-{sem:02d}.{ext}"
 URL_MENSAL = BASE + "/shpc/dsan/{ano}/precos-{grupo}-{mes:02d}.csv"
 GRUPOS_MENSAIS = ("gasolina-etanol", "diesel-gnv", "glp")
 PAGINA_SERIE = "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis"
-_RE_MENSAL = re.compile(r"/shpc/dsan/(\d{4})/precos-(gasolina-etanol|diesel-gnv|glp)-(\d{2})\.csv", re.I)
+_RE_MENSAL = re.compile(r"/shpc/dsan/(\d{4})/([^/?#\"']+)$", re.I)
 
 CABECALHO = {"User-Agent": "Mozilla/5.0 (compatible; anp-mapa/1.0; +https://github.com/RodrigoAiosa/anp)"}
 
@@ -104,11 +104,13 @@ def descobrir_mensais(html: str) -> dict[tuple[int, int], dict[str, str]]:
         m = _RE_MENSAL.search(href)
         if not m:
             continue
-        ano, grupo, mes = int(m.group(1)), m.group(2).lower(), int(m.group(3))
-        if not 1 <= mes <= 12:
+        ano, nome = int(m.group(1)), m.group(2).lower()
+        grupo = next((g for g in GRUPOS_MENSAIS if g in nome), None)   # os nomes mudam de mês a mês
+        mm = re.match(r"(?:precos-)?(\d{2})-", nome) or re.search(r"-(\d{2})(?:\.csv)?$", nome)
+        if not grupo or not mm or not 1 <= int(mm.group(1)) <= 12:
             continue
         url = href if href.startswith("http") else "https://www.gov.br" + href if href.startswith("/") else href
-        achados.setdefault((ano, mes), {})[grupo] = url
+        achados.setdefault((ano, int(mm.group(1))), {})[grupo] = url
     return achados
 
 

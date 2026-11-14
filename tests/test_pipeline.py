@@ -194,9 +194,9 @@ def test_descobrir_mensais_le_links_da_pagina():
     from anp_mapa import baixar as b
     base = "/anp/pt-br/centrais-de-conteudo/dados-abertos/arquivos/shpc/dsan/2026/"
     html = "".join(f'<a href="{base}precos-{g}-{m:02d}.csv">x</a>' for g in b.GRUPOS_MENSAIS for m in (9, 10)) \
-        + '<a href="/outro/ca-2022-01.csv">y</a>'
+        + f'<a href="{base}01-gasolina-etanol.csv">z</a><a href="/outro/ca-2022-01.csv">y</a>'
     r = b.descobrir_mensais(html)
-    assert sorted(r) == [(2026, 9), (2026, 10)]
+    assert sorted(r) == [(2026, 1), (2026, 9), (2026, 10)]   # 2026-01 com outro padrão de nome
     assert set(r[(2026, 10)]) == {"gasolina-etanol", "diesel-gnv", "glp"}
     assert r[(2026, 10)]["glp"].startswith("https://www.gov.br/anp/")
 
