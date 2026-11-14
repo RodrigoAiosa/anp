@@ -1123,6 +1123,13 @@
       var idade = $("#idade-base"), dia = (R.gerado_em || "").slice(0, 10);
       idade.textContent = "Base " + fmtData(dia);
       if (dia && (Date.now() - new Date(dia + "T00:00:00Z").getTime()) / 864e5 > 15) idade.classList.add("velha");
+      var anp = $("#anp-ultima"), ult = R.periodo_precos && R.periodo_precos[1];
+      if (ult) {
+        var atraso = Math.round((Date.now() - new Date(ult + "T00:00:00Z").getTime()) / 864e5);
+        anp.textContent = "ANP · preços até " + fmtData(ult);
+        anp.title = "Última coleta de preços publicada pela ANP: " + fmtData(ult) + " (há " + atraso + " dia" + (atraso === 1 ? "" : "s") + "). A ANP divulga um arquivo por mês; o mapa foi gerado em " + (R.gerado_em || "—") + ".";
+        if (atraso > 30) anp.classList.add("velha");
+      } else { anp.textContent = "ANP · sem preços"; anp.classList.add("velha"); }
       $("#base-info").textContent = R.gerado_em;
       $("#periodo-info").textContent = R.periodo_precos ? fmtData(R.periodo_precos[0]) + " a " + fmtData(R.periodo_precos[1]) + " (janela de " + R.janela_dias + " dias)" : "indisponível";
       R.ufs.forEach(function (u) { var o = document.createElement("option"); o.value = u.uf; o.textContent = u.nome + " (" + fmtN(u.n) + ")"; $("#uf").appendChild(o); });
