@@ -16,6 +16,9 @@ ficha, mapa base alternável, PWA, SEO e cabeçalhos de segurança.
 | Top 3 mais baratos / mais caros | Por combustível, no Brasil, no estado ou no município; clique para abrir o posto |
 | Ficha | Município (totais, média, mínimo, máximo) ou posto (bandeira, CNPJ, preços coletados) |
 | Resumo | Postos por bandeira no recorte |
+| **Postos mais próximos** | Digite um **CEP** (consulta o ViaCEP) ou clique em **Usar minha localização** (GPS + OpenStreetMap/Nominatim para achar CEP e cidade). Lista os postos do município ordenados pela **proximidade de CEP** e, depois, os dos municípios vizinhos (até 35 km) |
+
+> **"Mais próximo" é aproximado.** Sem a coordenada do posto, a ordem usa município e vizinhança de CEP (CEPs próximos costumam ser ruas próximas). Se o ViaCEP ou o Nominatim estiverem fora do ar, o site avisa; a coordenada do GPS só sai do navegador depois do clique e da permissão.
 
 Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10 e GNV (arquivo de combustíveis automotivos da ANP;
 GLP vem em outro arquivo e ainda não está incluído).

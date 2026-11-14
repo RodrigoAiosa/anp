@@ -896,3 +896,13 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .leaflet-tooltip-top::before { border-top-color: var(--border2); }
 .mun-sel { stroke: var(--cor-ciano); }
 .hud-vazio { display: none; }
+
+#usar-local[disabled] { opacity: .65; cursor: progress; }
+.exemplos { margin-top: 8px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.perto-item { display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; cursor: pointer; }
+.perto-pos { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 800 11px/1 Montserrat, sans-serif; color: #fff; background: var(--cor-azul); }
+.perto-item .top3-nome { white-space: normal; }
+.selo { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 1px 7px; border-radius: 99px; background: var(--ciano-dim); color: var(--cor-ciano); margin-right: 5px; }
+.selo.viz { background: var(--card); color: var(--muted); box-shadow: inset 0 0 0 1px var(--border2); }
+.marca-busca { pointer-events: none; }
+#perto-cabeca strong { color: var(--text); }

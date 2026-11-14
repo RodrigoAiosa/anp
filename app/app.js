@@ -201,7 +201,7 @@
       return '<label class="chip"><input type="radio" name="prod" value="' + esc(p) + '"' + (p === estado.prod ? " checked" : "") + "><span>" + esc(p) + "</span></label>";
     }).join("") || '<div class="nota" style="margin:0">Sem preços carregados: o mapa mostra só o cadastro.</div>';
     $$("input[name=prod]").forEach(function (i) {
-      i.addEventListener("change", function () { estado.prod = i.value; desenhar(); renderLegenda(); renderTop3(); gravarHash(); if ($("#ficha").dataset.tipo === "mun") abrirFichaMunicipio(); });
+      i.addEventListener("change", function () { estado.prod = i.value; desenhar(); renderLegenda(); renderTop3(); renderPerto(); gravarHash(); if ($("#ficha").dataset.tipo === "mun") abrirFichaMunicipio(); });
     });
   }
 
@@ -342,9 +342,18 @@
     $("#fechar-ficha").addEventListener("click", fecharFicha);
   }
 
-  function abrirFichaPosto(cnpj) {
+  function achaPosto(cnpj) {
     var achado = null;
-    (postosDoEscopo() || []).some(function (x) { if (x.p[5] === cnpj) { achado = x; return true; } return false; });
+    Object.keys(cacheUF).some(function (uf) {
+      return cacheUF[uf].municipios.some(function (m) {
+        return m.postos.some(function (p) { if (p[5] === cnpj) { achado = { m: m, p: p, uf: uf }; return true; } return false; });
+      });
+    });
+    return achado;
+  }
+
+  function abrirFichaPosto(cnpj) {
+    var achado = achaPosto(cnpj);
     if (!achado) return;
     var p = achado.p, f = $("#ficha");
     f.dataset.tipo = "posto";
@@ -353,11 +362,11 @@
     }).join("");
     f.innerHTML =
       '<div class="ficha-topo"><span class="ficha-op" style="font-size:15px">' + esc(p[0]) + '</span><button id="fechar-ficha" type="button" aria-label="Fechar">×</button></div>' +
-      '<div class="ficha-endereco">' + esc(p[2]) + (p[3] ? " – " + esc(p[3]) : "") + "<br>" + esc(achado.m.nome) + "/" + esc(estado.uf) + (p[4] ? " · CEP " + esc(p[4]) : "") + "</div>" +
+      '<div class="ficha-endereco">' + esc(p[2]) + (p[3] ? " – " + esc(p[3]) : "") + "<br>" + esc(achado.m.nome) + "/" + esc(achado.uf) + (p[4] ? " · CEP " + esc(p[4]) : "") + "</div>" +
       '<div class="ficha-linha"><span>Bandeira</span><strong>' + esc(p[1]) + "</strong></div>" +
       '<div class="ficha-linha"><span>CNPJ</span><code>' + esc(fmtCnpj(p[5])) + "</code></div>" +
       (precos || '<div class="ficha-linha"><span>Preços</span><strong>sem coleta recente</strong></div>') +
-      '<div class="ficha-links"><a href="' + mapsLink([p[2], p[3], achado.m.nome, estado.uf, "Brasil"].filter(Boolean).join(", ")) + '" target="_blank" rel="noopener">Abrir endereço no Google Maps</a></div>' +
+      '<div class="ficha-links"><a href="' + mapsLink([p[2], p[3], achado.m.nome, achado.uf, "Brasil"].filter(Boolean).join(", ")) + '" target="_blank" rel="noopener">Abrir endereço no Google Maps</a></div>' +
       '<div class="nota">O ponto no mapa é o centro do município, não a posição do posto.</div>';
     f.hidden = false;
     $("#fechar-ficha").addEventListener("click", fecharFicha);
@@ -368,6 +377,11 @@
   function buscar() {
     var q = norm($("#entrada").value).trim(), box = $("#resultados");
     if (q.length < 2) { box.hidden = true; box.innerHTML = ""; return; }
+    var soDig = q.replace(/[\s.-]/g, "");
+    if (/^\d+$/.test(soDig) && soDig.length <= 8) {   // parece CEP
+      if (soDig.length === 8) { box.hidden = true; buscarCEP(soDig); return; }
+      box.innerHTML = '<div class="msg">CEP com 8 dígitos: digite o resto (ou aperte Enter) para ver os postos mais próximos.</div>'; box.hidden = false; return;
+    }
     var muns = R.municipios.filter(function (m) { return (!estado.uf || m[2] === estado.uf) && norm(m[1]).indexOf(q) >= 0; })
       .sort(function (a, b) { return (norm(a[1]).indexOf(q) === 0 ? 0 : 1) - (norm(b[1]).indexOf(q) === 0 ? 0 : 1) || b[5] - a[5]; }).slice(0, 8);
     var postos = [];
@@ -396,6 +410,127 @@
     });
   }
 
+  // ------------------------------------------------------- postos mais próximos
+  var ctxPerto = null, markerBusca = null;
+  function setErro(t, ok) { var e = $("#erro"); e.textContent = t || ""; e.className = "msg" + (t ? (ok ? " ok" : " erro") : ""); }
+  function km(a, b, c, d) {
+    var r = Math.PI / 180, dLa = (c - a) * r, dLo = (d - b) * r;
+    var h = Math.sin(dLa / 2) * Math.sin(dLa / 2) + Math.cos(a * r) * Math.cos(c * r) * Math.sin(dLo / 2) * Math.sin(dLo / 2);
+    return 12742 * Math.asin(Math.sqrt(h));
+  }
+  function fetchJSON(url, ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = setTimeout(function () { if (ctl) ctl.abort(); }, ms || 7000);
+    return fetch(url, ctl ? { signal: ctl.signal } : {}).then(function (r) { clearTimeout(t); if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+  }
+  function municipioPorIbge(ibge) { return R.municipios.filter(function (m) { return m[0] === ibge; })[0] || null; }
+
+  function buscarCEP(cep) {
+    cep = String(cep).replace(/\D/g, "");
+    if (cep.length !== 8) { setErro("Digite um CEP com 8 dígitos."); return; }
+    setErro("Consultando o CEP…", true);
+    fetchJSON("https://viacep.com.br/ws/" + cep + "/json/").then(function (v) {
+      if (v.erro) { setErro("CEP não encontrado. Confira os números."); return; }
+      var m = municipioPorIbge(String(v.ibge));
+      if (!m) { setErro("Achei o CEP (" + (v.localidade || "") + "/" + (v.uf || "") + "), mas não localizei o município no mapa."); return; }
+      setErro("");
+      var rotulo = "CEP " + cep.replace(/^(\d{5})(\d{3})$/, "$1-$2") + [v.logradouro, v.bairro].filter(Boolean).map(function (x) { return " · " + x; }).join("") + " · " + m[1] + "/" + m[2];
+      return procurarProximos({ lat: m[3], lon: m[4], ibge: m[0], cep: parseInt(cep, 10), rotulo: rotulo, exato: false });
+    }).catch(function () { setErro("Não consegui consultar o CEP agora (ViaCEP fora do ar ou sem internet). Tente de novo ou escolha o município."); });
+  }
+
+  function usarLocal() {
+    var b = $("#usar-local");
+    if (!navigator.geolocation) { setErro("Este navegador não oferece localização."); return; }
+    b.disabled = true; setErro("Pedindo a localização ao aparelho…", true);
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var lat = pos.coords.latitude, lon = pos.coords.longitude;
+      setErro("Localização obtida. Procurando o CEP e o município do ponto…", true);
+      var cand = R.municipios.map(function (m) { return { m: m, d: km(lat, lon, m[3], m[4]) }; }).sort(function (a, c) { return a.d - c.d; }).slice(0, 6);
+      if (cand[0].d > 150) { b.disabled = false; setErro("Você parece estar a mais de 150 km de qualquer município com postos no mapa (fora do Brasil?)."); return; }
+      // OpenStreetMap devolve CEP e cidade do ponto; sem ele, usamos o município de centro mais próximo.
+      fetchJSON("https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=pt-BR&lat=" + lat + "&lon=" + lon, 6000)
+        .catch(function () { return null; })
+        .then(function (r) {
+          var a = (r && r.address) || {}, cep = null, prim = cand[0].m;
+          var cm = String(a.postcode || "").replace(/\D/g, "");
+          if (cm.length === 8) cep = parseInt(cm, 10);
+          var nome = norm(a.city || a.town || a.village || a.municipality || a.city_district || "");
+          if (nome) { cand.some(function (c) { if (norm(c.m[1]) === nome) { prim = c.m; return true; } return false; }); }
+          return procurarProximos({ lat: lat, lon: lon, ibge: prim[0], cep: cep, exato: true,
+            rotulo: "Sua localização" + (cep ? " · CEP " + String(cm).replace(/^(\d{5})(\d{3})$/, "$1-$2") : "") + " · " + prim[1] + "/" + prim[2] + " (±" + Math.round(pos.coords.accuracy) + " m)" });
+        }).then(function () { b.disabled = false; setErro(""); }, function () { b.disabled = false; });
+    }, function (e) {
+      b.disabled = false;
+      setErro(e.code === 1 ? "Permissão de localização negada. Libere no cadeado da barra de endereço, ou digite o CEP." :
+        e.code === 3 ? "A localização demorou demais. Tente de novo ou digite o CEP." : "Não consegui obter a localização. Digite o CEP.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  }
+
+  function procurarProximos(o) {
+    // município principal + vizinhos num raio de 35 km (ordenados por distância ao ponto)
+    var viz = R.municipios.filter(function (m) { return m[0] !== o.ibge; })
+      .map(function (m) { return { m: m, d: km(o.lat, o.lon, m[3], m[4]) }; })
+      .filter(function (x) { return x.d <= 35; }).sort(function (a, c) { return a.d - c.d; }).slice(0, 8);
+    var prim = municipioPorIbge(o.ibge);
+    var lista = [{ m: prim, d: km(o.lat, o.lon, prim[3], prim[4]), principal: true }].concat(viz);
+    var ufs = {}; lista.forEach(function (x) { ufs[x.m[2]] = 1; });
+    return Promise.all(Object.keys(ufs).map(carregarUF)).then(function () {
+      var itens = [];
+      lista.forEach(function (x) {
+        var d = cacheUF[x.m[2]].municipios.filter(function (mm) { return mm.ibge === x.m[0]; })[0];
+        if (!d) return;
+        d.postos.forEach(function (p) {
+          var cp = parseInt(p[4], 10), dif = (o.cep != null && !isNaN(cp)) ? Math.abs(cp - o.cep) : Infinity;
+          itens.push({ p: p, mun: x.m, d: x.d, principal: !!x.principal, dif: dif });
+        });
+      });
+      itens.sort(function (a, c) {
+        if (a.principal !== c.principal) return a.principal ? -1 : 1;
+        if (a.principal) { if (a.dif !== c.dif) return a.dif - c.dif; return 0; }
+        return a.d - c.d;
+      });
+      ctxPerto = { o: o, itens: itens, mostrar: 15 };
+      return selecionar(prim[2], prim[0], true).then(function () {
+        fecharFicha();
+        if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
+        markerBusca = L.marker([o.lat, o.lon], { interactive: false, keyboard: false, icon: L.divIcon({ className: "marca-busca", html: '<div class="alvo-busca"><span class="radar"></span></div>', iconSize: [0, 0] }) }).addTo(mapa);
+        mapa.flyTo([o.lat, o.lon], o.exato ? 12 : 11, { animate: !MENOS_MOVIMENTO, duration: 0.8 });
+        renderPerto();
+        var sec = $("#secao-perto"); sec.hidden = false; sec.classList.remove("recolhida");
+        try { sec.scrollIntoView({ behavior: MENOS_MOVIMENTO ? "auto" : "smooth", block: "start" }); } catch (e) { /* ok */ }
+      });
+    });
+  }
+
+  function seloPerto(it, o) {
+    if (it.principal) {
+      if (o.cep != null && isFinite(it.dif)) return it.dif < 1000 ? ['', 'região do CEP'] : ['', 'mesmo município'];
+      return ['', 'mesmo município'];
+    }
+    return ['viz', "~" + Math.max(1, Math.round(it.d)) + " km · " + it.mun[1]];
+  }
+
+  function renderPerto() {
+    if (!ctxPerto) return;
+    var c = ctxPerto, o = c.o, fatia = c.itens.slice(0, c.mostrar);
+    $("#perto-cabeca").innerHTML = "<strong>" + esc(o.rotulo) + "</strong><br>" + fmtN(c.itens.length) + " postos no município e em municípios num raio de 35 km. Mostrando os " + fmtN(fatia.length) + " mais próximos.";
+    $("#perto-lista").innerHTML = fatia.map(function (it, i) {
+      var p = it.p, sl = seloPerto(it, o), pr = p[6] && p[6][estado.prod];
+      return '<div class="item-lista perto-item" data-cnpj="' + esc(p[5]) + '"><span class="perto-pos">' + (i + 1) + '</span><span style="min-width:0">' +
+        '<span class="top3-nome" style="white-space:normal">' + esc(p[0]) + "</span>" +
+        '<span class="top3-sub" style="white-space:normal"><span class="selo ' + sl[0] + '">' + esc(sl[1]) + "</span>" + esc([p[1], p[2], p[3]].filter(Boolean).join(" · ")) + (p[4] ? " · CEP " + esc(p[4]) : "") + "</span></span>" +
+        '<span class="top3-preco" style="color:var(--text)">' + (pr ? fmtPreco(pr[0], estado.prod) : "") + "</span></div>";
+    }).join("") || '<div class="msg">Nenhum posto cadastrado por perto.</div>';
+    $("#perto-mais").hidden = c.itens.length <= fatia.length;
+    $$("#perto-lista .perto-item").forEach(function (el) { el.addEventListener("click", function () { abrirFichaPosto(el.dataset.cnpj); }); });
+  }
+
+  function fecharPerto() {
+    ctxPerto = null; $("#secao-perto").hidden = true;
+    if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
+  }
+
   // ------------------------------------------------------------- hash / link
   function gravarHash() {
     var p = [];
@@ -418,7 +553,7 @@
     var abertas = ["combustível", "top 3", "encontrar", "resumo do filtro"];
     $$("#painel > .secao").forEach(function (s) {
       var h = s.querySelector(":scope > h2");
-      if (!h || s.querySelector("#entrada")) return;
+      if (!h || s.querySelector("#entrada") || s.id === "secao-perto") return;
       var chave = h.textContent.trim().toLowerCase().replace(/ ·.*$/, "");
       s.classList.add("recolhivel");
       h.setAttribute("role", "button"); h.tabIndex = 0;
@@ -467,6 +602,16 @@
       $("#limpar").addEventListener("click", limparSelecao);
       $$("input[name=cor]").forEach(function (i) { i.addEventListener("change", function () { estado.cor = i.value; desenhar(); renderLegenda(); gravarHash(); }); });
       $("#entrada").addEventListener("input", function () { clearTimeout(tBusca); tBusca = setTimeout(buscar, 120); });
+      $("#entrada").addEventListener("keydown", function (e) {
+        if (e.key !== "Enter") return;
+        var d = $("#entrada").value.replace(/\D/g, ""), prim = $("#resultados .item-lista");
+        if (d.length === 8 && !/[a-z]/i.test($("#entrada").value)) buscarCEP(d); else if (prim) prim.click();
+      });
+      $("#buscar").addEventListener("click", function () { $("#entrada").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })); });
+      $$(".exemplo").forEach(function (b) { b.addEventListener("click", function () { $("#entrada").value = b.dataset.q; buscar(); if (/[a-z]/i.test(b.dataset.q)) { var f = $("#resultados .item-lista"); if (f) f.click(); } else buscarCEP(b.dataset.q); }); });
+      if (navigator.geolocation) { $("#usar-local").hidden = false; $("#usar-local").addEventListener("click", usarLocal); }
+      $("#perto-mais").addEventListener("click", function () { ctxPerto.mostrar += 15; renderPerto(); });
+      $("#perto-fechar").addEventListener("click", fecharPerto);
       $("#busca").addEventListener("input", function (e) { estado.busca = e.target.value; estado.mostrar = PAGINA; renderLista(); });
       $("#mais").addEventListener("click", function () { estado.mostrar += PAGINA; renderLista(); });
       $("#copiar-link").addEventListener("click", function () {

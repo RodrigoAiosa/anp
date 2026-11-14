@@ -25,6 +25,7 @@ Preços coletados entre <strong>{{PERIODO}}</strong>. Estado atual em <a href="/
 <ul>
 <li><strong>O ranking de preços usa uma amostra.</strong> O LPC pesquisa só parte dos postos. "Mais barato" quer dizer o mais barato entre os postos pesquisados, não entre todos.</li>
 <li><strong>A posição é a do município.</strong> Os arquivos da ANP não trazem a coordenada de cada posto; o círculo fica no centro do município (IBGE).</li>
+<li><strong>"Postos mais próximos" é aproximado.</strong> Sem a coordenada de cada posto, a lista ordena pelo município e pela proximidade de CEP (CEPs próximos costumam ser ruas próximas), depois pelos municípios vizinhos num raio de 35 km. Não é distância em linha reta nem rota.</li>
 <li>Cadastro autorizado não quer dizer posto aberto hoje. Preços podem ter mudado depois da coleta.</li>
 </ul>
 
@@ -32,6 +33,7 @@ Preços coletados entre <strong>{{PERIODO}}</strong>. Estado atual em <a href="/
 <ul>
 <li>Este site <strong>não usa cookies, não tem cadastro e não rastreia ninguém</strong>. Os dados são públicos de pessoas jurídicas (CNPJ, razão social, endereço comercial).</li>
 <li>Tema e seções abertas ficam <strong>só no seu navegador</strong> (<code>localStorage</code>).</li>
+<li><strong>Busca por CEP:</strong> o CEP digitado é enviado ao <a href="https://viacep.com.br">ViaCEP</a> para descobrir o município. <strong>Usar minha localização:</strong> só depois do seu clique e da sua permissão, o navegador lê o GPS; a coordenada é enviada ao <a href="https://nominatim.openstreetmap.org">Nominatim (OpenStreetMap)</a> para achar o CEP e a cidade do ponto. Nada disso passa pelo servidor deste site e nada é guardado.</li>
 <li>O desenho do mapa vem do OpenStreetMap, cujos servidores veem o seu IP, como em qualquer site. "Abrir no Google Maps" só envia algo ao Google depois do seu clique.</li>
 </ul>
 

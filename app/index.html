@@ -52,14 +52,33 @@
       <div class="busca-campo">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
         <input id="entrada" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Município (ou posto/CNPJ, dentro de um estado)">
+               placeholder="CEP, município ou posto" inputmode="search">
       </div>
+      <div class="botoes">
+        <button id="buscar" class="primario" type="button">Buscar</button>
+        <button id="usar-local" type="button" hidden
+          title="Usa o GPS do aparelho para listar os postos mais próximos. A coordenada só sai do navegador se você clicar (consulta o OpenStreetMap para achar o CEP do ponto).">📍 Usar minha localização</button>
+      </div>
+      <div class="exemplos" id="exemplos">Experimente:
+        <button type="button" class="exemplo" data-q="01310-100">CEP</button>
+        <button type="button" class="exemplo" data-q="Joinville">município</button>
+      </div>
+      <div id="erro" class="msg" role="status" aria-live="polite"></div>
       <div id="resultados" class="lista lista-rolagem" hidden></div>
       <div class="filtros-uf">
         <label>Estado <select id="uf" class="campo"><option value="">Brasil</option></select></label>
         <label>Município <select id="mun" class="campo" disabled><option value="">Todos</option></select></label>
       </div>
       <div class="botoes"><button id="limpar" type="button">Ver o Brasil todo</button></div>
+    </div>
+
+    <div class="secao" id="secao-perto" hidden>
+      <h2>Postos mais próximos</h2>
+      <div id="perto-cabeca" class="msg" style="margin-top:0"></div>
+      <div id="perto-lista" class="lista lista-rolagem" style="max-height:460px"></div>
+      <button id="perto-mais" class="pagina-mais" type="button" hidden>Mostrar mais</button>
+      <div class="nota">A ANP não publica a coordenada de cada posto. A ordem usa o <em>município</em> e a <em>proximidade de CEP</em> (CEPs próximos costumam ser ruas próximas), então é uma aproximação, não uma distância exata.</div>
+      <div class="botoes"><button id="perto-fechar" type="button">Fechar a busca</button></div>
     </div>
 
     <div class="secao" id="secao-comb">
