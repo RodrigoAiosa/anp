@@ -102,3 +102,8 @@ Revendedores da ANP (`revendedoresapi.anp.gov.br/v1/combustivel`, campos Latitud
 Coordenadas fora do Brasil, invertidas ou a mais de 150 km do município são descartadas. Posto sem coordenada
 válida aparece no centro do município, com contorno branco. Se a API estiver fora do ar, o build continua e todos
 os postos ficam no centro do município. Para pular a API: `SEM_API_COORDENADAS=1`.
+
+## Meus lugares e tour de boas-vindas
+
+- **Meus lugares:** depois de buscar um ponto (GPS, CEP ou clique no mapa), "Salvar este ponto" guarda o endereço com o nome que você der. As buscas recentes (CEP e município) também ficam na lista. Tudo no `localStorage` do navegador (`anp.lugares.v1`).
+- **Tour com missões:** na primeira visita, um sumário gamificado (`app/tour.js`, adaptado do mapa de antenas) apresenta cada item da tela como uma missão, com XP e níveis. O botão "Missões" no topo reabre o sumário a qualquer hora (progresso em `anp.tour.v1`).

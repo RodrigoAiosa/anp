@@ -75,6 +75,11 @@
     <div class="secao" id="secao-perto" hidden>
       <h2>Postos mais próximos</h2>
       <div id="perto-cabeca" class="msg" style="margin-top:0"></div>
+      <div class="botoes"><button id="perto-salvar" type="button" title="Guarda este ponto em Meus lugares">☆ Salvar este ponto</button></div>
+      <div id="salvar-form" class="salvar-form" hidden>
+        <input id="salvar-nome" class="campo" type="text" maxlength="60" autocomplete="off" aria-label="Nome do lugar" placeholder="Nome do lugar">
+        <button id="salvar-ok" class="primario" type="button">Salvar</button>
+      </div>
       <div class="deslizante" id="bloco-raio" hidden>
         <label>Raio <strong id="raio-valor">5 km</strong></label>
         <input id="raio" type="range" min="1" max="30" value="5" step="1" aria-label="Raio da busca">
@@ -83,6 +88,16 @@
       <button id="perto-mais" class="pagina-mais" type="button" hidden>Mostrar mais</button>
       <div class="nota" id="perto-nota">A ANP não publica a coordenada de cada posto. A ordem usa o <em>município</em> e a <em>proximidade de CEP</em> (CEPs próximos costumam ser ruas próximas), então é uma aproximação, não uma distância exata.</div>
       <div class="botoes"><button id="perto-fechar" type="button">Fechar a busca</button></div>
+    </div>
+
+    <div class="secao" id="secao-lugares">
+      <h2>Meus lugares</h2>
+      <div id="lugares-vazio" class="nota" style="margin-top:0">Depois de buscar um ponto, toque em “Salvar este ponto” para voltar a ele com um toque. As buscas recentes também aparecem aqui.</div>
+      <div id="lugares-favoritos" class="lugares" role="list"></div>
+      <div class="lista-titulo" id="lugares-recentes-titulo" hidden>Buscas recentes</div>
+      <div id="lugares-recentes" class="lugares" role="list"></div>
+      <div class="botoes"><button id="lugares-limpar" type="button" hidden>Limpar buscas recentes</button></div>
+      <div class="nota">Ficam só neste navegador: nada é enviado.</div>
     </div>
 
     <div class="secao" id="secao-comb">
@@ -114,7 +129,7 @@
       <button id="mais" class="pagina-mais" type="button" hidden>Mostrar mais</button>
     </div>
 
-    <div class="secao">
+    <div class="secao" id="secao-resumo">
       <h2>Resumo do filtro</h2>
       <div id="resumo"></div>
     </div>
@@ -150,5 +165,6 @@
 
 <script src="vendor/leaflet.js"></script>
 <script src="app.js"></script>
+<script src="tour.js"></script>
 </body>
 </html>
