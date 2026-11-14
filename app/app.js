@@ -710,7 +710,7 @@
     if (cepEmCurso === cep) return;   // Enter + digitação disparam duas vezes: uma consulta só
     cepEmCurso = cep;
     setErro("Consultando o CEP…", true);
-    fetchJSON("https://viacep.com.br/ws/" + cep + "/json/").then(function (v) {
+    fetchJSON("https://viacep.com.br/ws/" + cep + "/json/", 8000).catch(function () { return fetchJSON("https://viacep.com.br/ws/" + cep + "/json/", 8000); }).then(function (v) {   // uma nova tentativa se falhar
       if (v.erro) { setErro("CEP não encontrado. Confira os números."); return; }
       var m = municipioDoCEP(v);
       if (!m) { setErro("Achei o CEP (" + (v.localidade || "") + "/" + (v.uf || "") + "), mas não localizei o município no mapa."); return; }
