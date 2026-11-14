@@ -1120,9 +1120,6 @@
       estado.prod = R.produtos.indexOf(h.p) >= 0 ? h.p : (R.produtos[0] || "");
       if (h.c === "postos") { estado.cor = "postos"; $$("input[name=cor]").forEach(function (i) { i.checked = i.value === "postos"; }); }
 
-      var idade = $("#idade-base"), dia = (R.gerado_em || "").slice(0, 10);
-      idade.textContent = "Base " + fmtData(dia);
-      if (dia && (Date.now() - new Date(dia + "T00:00:00Z").getTime()) / 864e5 > 15) idade.classList.add("velha");
       var anp = $("#anp-ultima"), ult = R.periodo_precos && R.periodo_precos[1];
       if (ult) {
         var atraso = Math.round((Date.now() - new Date(ult + "T00:00:00Z").getTime()) / 864e5);
