@@ -16,7 +16,7 @@ ficha, mapa base alternável, PWA, SEO e cabeçalhos de segurança.
 | Top 3 mais baratos / mais caros | Por combustível, no Brasil, no estado ou no município; clique para abrir o posto |
 | Ficha | Município (totais, média, mínimo, máximo) ou posto (bandeira, CNPJ, preços coletados) |
 | Resumo | Postos por bandeira no recorte |
-| **Postos mais próximos** | Digite um **CEP** (ViaCEP para o endereço; AwesomeAPI/BrasilAPI/OpenStreetMap para a coordenada da rua, descartando pontos fora do município) ou clique em **Usar minha localização** (GPS + OpenStreetMap/Nominatim para achar CEP e cidade). Lista os postos do município ordenados pela **proximidade de CEP** e, depois, os dos municípios vizinhos (até 35 km) |
+| **Postos mais próximos** | Digite um **CEP** (ViaCEP para o endereço e OpenStreetMap/Nominatim para achar a rua, como no MapaAntenasAnatel; cai para o bairro e depois para a estimativa pelos postos de CEP vizinho, descartando pontos fora do município) ou clique em **Usar minha localização** (GPS + OpenStreetMap/Nominatim para achar CEP e cidade). Lista os postos do município ordenados pela **proximidade de CEP** e, depois, os dos municípios vizinhos (até 35 km) |
 
 > **"Mais próximo"** usa a distância em linha reta do pino (GPS, CEP ou clique no mapa; arrastável) até a coordenada de cada posto, num raio de 1 a 30 km. Posto sem coordenada na ANP fica no centro do município e é marcado como aproximado. O GPS só é lido depois do clique e da permissão.
 

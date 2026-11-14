@@ -662,45 +662,47 @@
     return R.municipios.filter(function (x) { return x[2] === uf && semAcento(x[1]) === nome; })[0] || null;
   }
 
-  // ---- localização do CEP: provedores com coordenada da rua, validados contra o município
-  var CEP_MAX_KM = 60;   // ponto a mais que isso do centro do município é descartado (erro de geocodificação)
-  function numOuNulo(x) { var n = parseFloat(x); return isFinite(n) ? n : null; }
-  function pontoValido(la, lo, m, fonte) {
-    la = numOuNulo(la); lo = numOuNulo(lo);
-    if (la == null || lo == null || (la === 0 && lo === 0)) return null;
-    if (la < -34 || la > 6 || lo < -74 || lo > -28) return null;   // fora do Brasil
-    var dc = km(la, lo, m[3], m[4]);
-    if (dc > CEP_MAX_KM) return null;                                // em outra cidade: dado errado
-    if (dc < 0.3) return null;                                       // igual ao centro da cidade: provedor sem a rua, não é preciso
-    return { lat: la, lon: lo, fonte: fonte };
+  // ---- localização do CEP (mesmo método do MapaAntenasAnatel): ViaCEP diz a rua/bairro/município e o
+  // OpenStreetMap (Nominatim) acha a rua; se não achar, cai para o bairro e depois para o município.
+  var CEP_MAX_KM = 60, nomUltimo = 0;   // ponto a mais que isso do centro do município é descartado
+  function nominatimBusca(params, tentativa) {
+    var espera = Math.max(0, nomUltimo + 1100 - Date.now());   // política do Nominatim: 1 pedido por segundo
+    return new Promise(function (ok) { setTimeout(ok, espera); }).then(function () {
+      nomUltimo = Date.now();
+      var q = new URLSearchParams(Object.assign({ format: "jsonv2", addressdetails: "1", countrycodes: "br", limit: "3", "accept-language": "pt-BR" }, params));
+      return fetchJSON("https://nominatim.openstreetmap.org/search?" + q.toString(), 10000);
+    }).then(function (l) { return Array.isArray(l) ? l : []; })
+      .catch(function () { return (tentativa || 0) < 1 ? nominatimBusca(params, (tentativa || 0) + 1) : []; });   // falha de rede: tenta mais uma vez
   }
+  function cidadeDoResultado(r) { var a = (r && r.address) || {}; return a.city || a.town || a.village || a.municipality || a.city_district || ""; }
+  function pontoValido(r, m) {   // dentro do Brasil, do município e na cidade certa
+    var la = parseFloat(r.lat), lo = parseFloat(r.lon);
+    if (!isFinite(la) || !isFinite(lo) || la < -34 || la > 6 || lo < -74 || lo > -28) return null;
+    if (km(la, lo, m[3], m[4]) > CEP_MAX_KM) return null;
+    var c = cidadeDoResultado(r);
+    if (c && semAcento(c) !== semAcento(m[1])) return null;           // rua de outra cidade com o mesmo nome
+    return { lat: la, lon: lo };
+  }
+  function primeiroValido(lista, m, rejeitaCidade) {
+    for (var i = 0; i < lista.length; i++) {
+      if (rejeitaCidade && (parseInt(lista[i].place_rank, 10) || 0) < 17) continue;   // veio o município inteiro, não o bairro
+      var pt = pontoValido(lista[i], m); if (pt) return pt;
+    }
+    return null;
+  }
+  // devolve { lat, lon, precisao: "rua" | "bairro" } ou null (aí usa a estimativa pelos postos de CEP vizinho)
   function geocodarCEP(cep, v, m) {
-    var a = fetchJSON("https://cep.awesomeapi.com.br/json/" + cep, 5000)
-      .then(function (r) { return pontoValido(r && r.lat, r && r.lng, m, "AwesomeAPI"); }).catch(function () { return null; });
-    var b = fetchJSON("https://brasilapi.com.br/api/cep/v2/" + cep, 5000)
-      .then(function (r) { var c = (r && r.location && r.location.coordinates) || {}; return pontoValido(c.latitude, c.longitude, m, "BrasilAPI"); }).catch(function () { return null; });
-    return Promise.all([a, b]).then(function (rs) {
-      if (rs[0] && rs[1]) {
-        // dois provedores discordam (> 2 km): fica o mais próximo dos postos de CEP vizinho
-        if (km(rs[0].lat, rs[0].lon, rs[1].lat, rs[1].lon) <= 2) return rs[0];
-        return posicaoDoCEP(m, parseInt(cep, 10)).then(function (h) {
-          if (!h[2]) return rs[0];
-          return km(rs[0].lat, rs[0].lon, h[0], h[1]) <= km(rs[1].lat, rs[1].lon, h[0], h[1]) ? rs[0] : rs[1];
-        });
-      }
-      if (rs[0] || rs[1]) return rs[0] || rs[1];
-      // último recurso de geocodificação: OpenStreetMap pelo CEP e, depois, pela rua
-      var base = "https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&accept-language=pt-BR";
-      var porCep = fetchJSON(base + "&postalcode=" + encodeURIComponent(cep.replace(/^(\d{5})(\d{3})$/, "$1-$2")) + "&city=" + encodeURIComponent(v.localidade || m[1]) + "&state=" + encodeURIComponent(v.uf || m[2]), 6000)
-        .then(function (r) { return r && r[0] ? pontoValido(r[0].lat, r[0].lon, m, "OpenStreetMap") : null; }).catch(function () { return null; });
-      return porCep.then(function (pt) {
-        if (pt || !v.logradouro) return pt;
-        return fetchJSON(base + "&street=" + encodeURIComponent(v.logradouro) + "&city=" + encodeURIComponent(v.localidade || m[1]) + "&state=" + encodeURIComponent(v.uf || m[2]), 6000)
-          .then(function (r) { return r && r[0] ? pontoValido(r[0].lat, r[0].lon, m, "OpenStreetMap") : null; }).catch(function () { return null; });
+    var cidade = v.localidade || m[1], uf = v.uf || m[2];
+    var rua = v.logradouro ? nominatimBusca({ street: v.logradouro, city: cidade, state: uf }).then(function (l) {
+      var pt = primeiroValido(l, m, false); return pt ? { lat: pt.lat, lon: pt.lon, precisao: "rua" } : null;
+    }) : Promise.resolve(null);
+    return rua.then(function (r) {
+      if (r || !v.bairro) return r;
+      return nominatimBusca({ q: v.bairro + ", " + cidade + ", " + uf }).then(function (l) {
+        var pt = primeiroValido(l, m, true); return pt ? { lat: pt.lat, lon: pt.lon, precisao: "bairro" } : null;
       });
     });
   }
-
   var cepEmCurso = null;
   function buscarCEP(cep) {
     cep = String(cep).replace(/\D/g, "");
@@ -718,7 +720,7 @@
       var cepNum = parseInt(cep, 10);
       return geocodarCEP(cep, v, m).then(function (g) {
         if (modoPontos) {
-          if (g) return procurarRaio({ lat: g.lat, lon: g.lon, rotulo: rotulo + " · localizado pelo CEP (" + g.fonte + "); arraste para ajustar", exato: true });
+          if (g) return procurarRaio({ lat: g.lat, lon: g.lon, rotulo: rotulo + (g.precisao === "rua" ? " · localizado pela rua do CEP (OpenStreetMap, não pelo número); arraste para ajustar" : " · localizado pelo bairro (aproximado); arraste para ajustar"), exato: g.precisao === "rua" });
           return posicaoDoCEP(m, cepNum).then(function (pos) { return procurarRaio({ lat: pos[0], lon: pos[1], rotulo: rotulo + (pos[2] ? " · posição estimada pelos postos de CEP vizinho; arraste para ajustar" : " · pino no centro do município; arraste para ajustar"), exato: false }); });
         }
         return procurarProximos({ lat: g ? g.lat : m[3], lon: g ? g.lon : m[4], ibge: m[0], cep: cepNum, rotulo: rotulo, exato: !!g });
