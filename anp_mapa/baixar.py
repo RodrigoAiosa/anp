@@ -147,7 +147,8 @@ def baixar_precos_mensais(pasta: Path, meses: int = 3, hoje: dt.date | None = No
 def baixar_precos(pasta: Path, quantos: int = 2, hoje: dt.date | None = None, meses: int = 3) -> list[Path]:
     """Preços LPC: arquivos mensais (2023+). Se não houver nenhum, recua para os `quantos` semestres antigos que existirem (o semestre corrente costuma
     ainda não estar publicado: nesse caso recua)."""
-    achados: list[Path] = baixar_precos_mensais(pasta, meses, hoje)
+    import os
+    achados: list[Path] = baixar_precos_mensais(pasta, int(os.environ.get("MESES", meses)), hoje)
     if achados:
         return achados
     print("  Nenhum arquivo mensal encontrado: tentando os semestrais (até 2022).", file=sys.stderr)

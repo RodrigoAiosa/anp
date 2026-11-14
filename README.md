@@ -20,8 +20,10 @@ ficha, mapa base alternável, PWA, SEO e cabeçalhos de segurança.
 
 > **"Mais próximo"** usa a distância em linha reta do pino (GPS, CEP ou clique no mapa; arrastável) até a coordenada de cada posto, num raio de 1 a 30 km. Posto sem coordenada na ANP fica no centro do município e é marcado como aproximado. O GPS só é lido depois do clique e da permissão.
 
-Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10 e GNV (arquivo de combustíveis automotivos da ANP;
-GLP vem em outro arquivo e ainda não está incluído).
+Combustíveis: gasolina comum e aditivada, etanol, diesel S-500 e S-10, GNV e GLP. Desde 2023 a ANP publica os preços em
+**arquivos mensais** (`gasolina-etanol`, `diesel-gnv` e `glp`); o build baixa os 3 meses mais recentes (variável `MESES`)
+e só recua para os semestrais antigos (até 2022) se não achar nenhum mensal. O workflow *Verificar dados da ANP* testa o
+download real e mostra até que data os preços vão.
 
 **Cobertura dos preços:** no primeiro build real (preços de jun/2026), 5.651 dos 45.840 postos tinham preço e só
 413 dos 5.525 municípios tinham média, porque o levantamento da ANP cobre poucas centenas de municípios. Nos demais, o
