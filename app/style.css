@@ -911,3 +911,14 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 /* Número do posto na lista "mais próximos", sobre o mapa */
 .num-perto { pointer-events: none; }
 .num-perto span { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--cor-ciano); color: #04202a; font: 800 11px/1 Inter, sans-serif; box-shadow: 0 0 0 2px rgba(4, 32, 42, .85), 0 2px 8px rgba(0, 0, 0, .5); }
+
+/* posto escolhido em "Postos mais próximos": destaque no mapa e na lista */
+.num-perto.ativo span { transform: scale(1.45); background: #FFC107; color: #1b1300; box-shadow: 0 0 0 2px #1b1300, 0 0 14px 4px rgba(255, 193, 7, .75); transition: transform .2s var(--curva); }
+.sel-perto { pointer-events: none; }
+.sel-perto .ponto { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; background: #FFC107; box-shadow: 0 0 0 2px #1b1300; }
+.sel-perto .anel { position: absolute; left: -26px; top: -26px; width: 52px; height: 52px; border-radius: 50%; border: 3px solid #FFC107; box-shadow: 0 0 16px rgba(255, 193, 7, .7), inset 0 0 12px rgba(255, 193, 7, .35); animation: pulso-sel 1.6s ease-out infinite; }
+.sel-perto .anel.a2 { animation-delay: .8s; }
+@keyframes pulso-sel { 0% { transform: scale(.45); opacity: .95; } 100% { transform: scale(1.5); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sel-perto .anel { animation: none; opacity: .9; } .sel-perto .anel.a2 { display: none; } }
+.perto-item.sel { border-color: #FFC107; background: rgba(255, 193, 7, .10); box-shadow: inset 3px 0 0 #FFC107; }
+.perto-item.sel .perto-pos { background: #FFC107; color: #1b1300; }

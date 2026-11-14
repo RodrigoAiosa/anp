@@ -826,11 +826,11 @@
     ctxPerto = null; $("#secao-perto").hidden = true;
     if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
     [pino, circuloRaio, destaquePerto].forEach(function (l) { if (l && mapa.hasLayer(l)) mapa.removeLayer(l); });
-    pino = null; circuloRaio = null; destaquePerto = null;
+    pino = null; circuloRaio = null; destaquePerto = null; selPerto = null; marcasNum = {}; anelSel = null;
   }
 
   // ---------- busca por raio (cada posto tem coordenada: distância em linha reta a partir de um pino)
-  var raioKm = 5, pino = null, circuloRaio = null, rendSvg = null, destaquePerto = null, tokenPerto = 0, rafPerto = 0;
+  var raioKm = 5, pino = null, circuloRaio = null, rendSvg = null, destaquePerto = null, tokenPerto = 0, rafPerto = 0, selPerto = null, marcasNum = {}, anelSel = null;
 
   function posicaoDoCEP(m, cep) {
     // posição do pino: mediana dos 3 postos do município com CEP mais parecido e coordenada da ANP
@@ -871,6 +871,7 @@
   function procurarRaio(o) {
     var ja = ctxPerto && ctxPerto.modo === "raio";
     ctxPerto = { o: o, mostrar: 15, modo: "raio", itens: [] };
+    if (!ja) selPerto = null;
     if (estado.uf || estado.ibge) limparSelecao(true);   // sem filtro de município: todos os pontos à volta aparecem
     fecharFicha();
     colocarPino(o.lat, o.lon);
@@ -900,16 +901,32 @@
     renderPertoRaio();
   }
 
+  // posto escolhido na lista "mais próximos": anel pulsante no mapa, número em destaque e item marcado na lista
+  function aplicarSelecaoPerto() {
+    if (anelSel && destaquePerto) { destaquePerto.removeLayer(anelSel); }
+    anelSel = null;
+    Object.keys(marcasNum).forEach(function (k) {
+      var el = marcasNum[k].getElement(); if (el) el.classList.toggle("ativo", +k === selPerto);
+    });
+    $$("#perto-lista .perto-item").forEach(function (el) { el.classList.toggle("sel", selPerto != null && +el.dataset.i === selPerto); });
+    if (selPerto == null || !PT || !destaquePerto) return;
+    anelSel = L.marker([PT.lat[selPerto], PT.lon[selPerto]], { interactive: false, keyboard: false, zIndexOffset: 800,
+      icon: L.divIcon({ className: "sel-perto", html: '<span class="anel"></span><span class="anel a2"></span><span class="ponto"></span>', iconSize: [0, 0] }) }).addTo(destaquePerto);
+    var n = marcasNum[selPerto]; if (n) n.setZIndexOffset(900);
+  }
+
   function renderPertoRaio() {
     var c = ctxPerto, o = c.o, fatia = c.itens.slice(0, c.mostrar), tk = ++tokenPerto, ufs = {};
     fatia.forEach(function (x) { ufs[PT.uf[PT.u[x.i]]] = 1; });
     $("#perto-cabeca").innerHTML = "<strong>" + esc(o.rotulo) + "</strong><br>" + (c.itens.length
       ? fmtN(c.itens.length) + " posto" + (c.itens.length > 1 ? "s" : "") + " em até " + raioKm + " km. Mostrando os " + fmtN(fatia.length) + " mais próximos."
       : "Nenhum posto em até " + raioKm + " km. Aumente o raio.");
-    destaquePerto.clearLayers();
+    destaquePerto.clearLayers(); marcasNum = {}; anelSel = null;
     fatia.forEach(function (x, k) {
-      L.marker([PT.lat[x.i], PT.lon[x.i]], { interactive: false, keyboard: false, icon: L.divIcon({ className: "num-perto", html: "<span>" + (k + 1) + "</span>", iconSize: [20, 20] }) }).addTo(destaquePerto);
+      marcasNum[x.i] = L.marker([PT.lat[x.i], PT.lon[x.i]], { interactive: false, keyboard: false, icon: L.divIcon({ className: "num-perto", html: "<span>" + (k + 1) + "</span>", iconSize: [20, 20] }) }).addTo(destaquePerto);
     });
+    if (selPerto != null && !marcasNum[selPerto]) selPerto = null;   // o posto escolhido saiu da lista (raio menor ou pino movido)
+    aplicarSelecaoPerto();
     $("#perto-mais").hidden = c.itens.length <= fatia.length;
     Promise.all(Object.keys(ufs).map(carregarUF)).then(function () {
       if (tk !== tokenPerto || ctxPerto !== c) return;
@@ -923,9 +940,11 @@
           esc(p ? [p[1], p[2], p[3]].filter(Boolean).join(" · ") : PT.band[PT.b[x.i]]) + "</span></span>" +
           '<span class="top3-preco" style="color:var(--text)">' + (pr === pr ? fmtPreco(pr, estado.prod) : "") + "</span></div>";
       }).join("") || '<div class="msg">Nenhum posto cadastrado por perto.</div>';
+      aplicarSelecaoPerto();
       $$("#perto-lista .perto-item").forEach(function (el) {
         el.addEventListener("click", function () {
           var i = +el.dataset.i;
+          selPerto = i; aplicarSelecaoPerto();
           abrirFichaPosto(PT.c[i]);
           mapa.flyTo([PT.lat[i], PT.lon[i]], Math.max(mapa.getZoom(), 15), { animate: !MENOS_MOVIMENTO, duration: 0.6 });
         });
