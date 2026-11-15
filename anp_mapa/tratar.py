@@ -131,12 +131,14 @@ def ler_cadastro(caminho: Path) -> pd.DataFrame:
 def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
     """Série de preços LPC, já com produto padronizado e preço numérico."""
     partes = []
-    regras = {
+    regras = {   # a ordem importa: "CNPJ DA REVENDA" e "PREÇO DE REVENDA" não podem ser tomados por "REVENDA"
         "uf": ("ESTADO SIGLA", "ESTADO"), "municipio": ("MUNICIPIO",),
-        "revenda": ("REVENDA",), "cnpj": ("CNPJ DA REVENDA", "CNPJ"),
+        "cnpj": ("CNPJ DA REVENDA", "CNPJ"),
+        "preco": ("VALOR DE VENDA", "PRECO DE REVENDA", "PRECO REVENDA", "PRECO DE VENDA", "VALOR DE REVENDA"),
+        "revenda": ("REVENDA",),
         "rua": ("NOME DA RUA",), "numero": ("NUMERO RUA",), "complemento": ("COMPLEMENTO",),
         "bairro": ("BAIRRO",), "cep": ("CEP",), "produto": ("PRODUTO",),
-        "data": ("DATA DA COLETA", "DATA"), "preco": ("VALOR DE VENDA", "PRECO DE REVENDA", "PRECO REVENDA", "PRECO DE VENDA", "VALOR DE REVENDA"),
+        "data": ("DATA DA COLETA", "DATA"),
         "bandeira": ("BANDEIRA",),
     }
     for p in caminhos:
