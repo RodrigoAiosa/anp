@@ -280,9 +280,10 @@ def test_descobrir_e_candidatos_semanais():
     from anp_mapa import baixar
     html = ('<a href="/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/arquivos-lpc/2026/revendas_lpc_2026-10-25_2026-10-31.xlsx/view">x</a>'
             '<a href="https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/arquivos-lpc/2026/revendas_lpc_2026-11-01_2026-11-07.xlsx">y</a>'
+            "<a href='/a/Revendas_LPC_2026.11.08_2026.11.14.xlsx/@@download/file/x.xlsx'>z</a>"
             '<a href="/x/resumo_semanal_lpc_2026-11-01_2026-11-07.xlsx/view">nao</a>')
     achados = baixar.descobrir_semanais(html)
-    assert set(achados) == {dt.date(2026, 10, 31), dt.date(2026, 11, 7)}
+    assert set(achados) == {dt.date(2026, 10, 31), dt.date(2026, 11, 7), dt.date(2026, 11, 14)}
     assert achados[dt.date(2026, 10, 31)].endswith("revendas_lpc_2026-10-25_2026-10-31.xlsx")
     assert achados[dt.date(2026, 10, 31)].startswith("https://www.gov.br/")
     c = baixar.candidatos_semanais(dt.date(2026, 11, 14), 3)       # sábado: a semana de 08 a 14/11 ainda vale

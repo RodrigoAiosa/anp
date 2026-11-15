@@ -34,7 +34,7 @@ _RE_MENSAL = re.compile(r"/shpc/dsan/(\d{4})/([^/?#\"']+)$", re.I)
 PAGINA_LPC = "https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos"
 PAGINAS_SEMANAIS = (PAGINA_LPC + "/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas",)
 URL_SEMANAL = PAGINA_LPC + "/arquivos-lpc/{ano}/revendas_lpc_{ini}_{fim}.xlsx"
-_RE_SEMANAL = re.compile(r"revendas_lpc_(\d{4})-(\d{2})-(\d{2})_(\d{4})-(\d{2})-(\d{2})\.xlsx", re.I)
+_RE_SEMANAL = re.compile(r"revendas[_-]lpc[_-](\d{4})[-._](\d{2})[-._](\d{2})[_-](\d{4})[-._](\d{2})[-._](\d{2})\.xlsx", re.I)
 
 CABECALHO = {"User-Agent": "Mozilla/5.0 (compatible; anp-mapa/1.0; +https://github.com/RodrigoAiosa/anp)"}
 
@@ -193,7 +193,7 @@ def baixar_tudo(pasta: Path, semestres: int = 2) -> tuple[Path, list[Path]]:
 def descobrir_semanais(html: str) -> dict[dt.date, str]:
     """Links dos arquivos semanais numa página da ANP: {último dia da semana: url do arquivo}."""
     achados: dict[dt.date, str] = {}
-    for href in set(re.findall(r'href="([^"]+)"', html)):
+    for href in set(re.findall(r'href=["\']([^"\']+)["\']', html)):
         m = _RE_SEMANAL.search(href)
         if not m:
             continue
@@ -201,9 +201,8 @@ def descobrir_semanais(html: str) -> dict[dt.date, str]:
             fim = dt.date(int(m.group(4)), int(m.group(5)), int(m.group(6)))
         except ValueError:
             continue
-        url = href if href.startswith("http") else "https://www.gov.br" + href if href.startswith("/") else href
-        url = re.sub(r"/(view|@@download/file)/?$", "", url)        # a página de visualização vira o arquivo
-        achados[fim] = url
+        href = href[:m.end()]                                          # corta /view, /@@download/file...: fica o arquivo
+        achados[fim] = href if href.startswith("http") else "https://www.gov.br" + href if href.startswith("/") else href
     return achados
 
 
@@ -248,9 +247,13 @@ def baixar_semanais(pasta: Path, depois_de: dt.date | None, hoje: dt.date | None
     paginas = list(PAGINAS_SEMANAIS) + [PAGINA_LPC + f"/arquivos-lpc/{a}" for a in sorted({hoje.year, (hoje - dt.timedelta(days=45)).year}, reverse=True)]
     for pag in paginas:
         try:
-            r = requests.get(pag, headers=CABECALHO, timeout=60)
+            r = requests.get(pag, headers=CABECALHO, timeout=30)
             r.raise_for_status()
-            for fim, u in descobrir_semanais(r.text).items():
+            achou = descobrir_semanais(r.text)
+            lpc = re.findall(r'href=["\']([^"\']*lpc[^"\']*)["\']', r.text, re.I)
+            print(f"  página {pag.rsplit('/', 1)[-1]}: HTTP {r.status_code}, {len(r.text)} bytes, {len(achou)} semanal(is); "
+                  f"links com 'lpc': {len(lpc)} {lpc[:2]}")
+            for fim, u in achou.items():
                 urls.setdefault(fim, [u])
         except requests.RequestException as e:
             print(f"  (página dos preços semanais indisponível: {pag.rsplit('/', 1)[-1]}: {e})", file=sys.stderr)
