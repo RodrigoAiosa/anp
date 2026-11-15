@@ -279,7 +279,7 @@ def test_descobrir_e_candidatos_semanais():
     import datetime as dt
     from anp_mapa import baixar
     html = ('<a href="/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/arquivos-lpc/2026/revendas_lpc_2026-10-25_2026-10-31.xlsx/view">x</a>'
-            '<a href="https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/arquivos-lpc/2026/revendas_lpc_2026-11-01_2026-11-07.xlsx">y</a>'
+            '<a href="https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos/arquivos-lpc/2026/revendas_lpc_2026_11_01-2026_11_07.xlsx">y</a>'
             "<a href='/a/Revendas_LPC_2026.11.08_2026.11.14.xlsx/@@download/file/x.xlsx'>z</a>"
             '<a href="/x/resumo_semanal_lpc_2026-11-01_2026-11-07.xlsx/view">nao</a>')
     achados = baixar.descobrir_semanais(html)
@@ -288,7 +288,7 @@ def test_descobrir_e_candidatos_semanais():
     assert achados[dt.date(2026, 10, 31)].startswith("https://www.gov.br/")
     c = baixar.candidatos_semanais(dt.date(2026, 11, 14), 3)       # sábado: a semana de 08 a 14/11 ainda vale
     assert list(c)[0] == dt.date(2026, 11, 14) and list(c)[1] == dt.date(2026, 11, 7)
-    assert "revendas_lpc_2026-11-01_2026-11-07.xlsx" in c[dt.date(2026, 11, 7)][0]
+    assert c[dt.date(2026, 11, 7)][0].endswith("/2026/revendas_lpc_2026_11_01-2026_11_07.xlsx")
     virada = baixar.candidatos_semanais(dt.date(2026, 1, 3), 1)[dt.date(2026, 1, 3)]
     assert len(virada) == 2 and "/2025/" in virada[0] and "/2026/" in virada[1]
     assert baixar.fim_do_ultimo_mes([Path("precos-2026-10-glp.csv"), Path("precos-2026-09-glp.csv")]) == dt.date(2026, 10, 31)
@@ -306,14 +306,14 @@ def test_baixar_semanais_pega_so_as_depois_do_ultimo_mes(tmp_path, monkeypatch):
 
     def falso_baixar(url, destino, tentativas=3):
         pedidos.append(url)
-        if "2026-11-01_2026-11-07" in url and "/@@download/file" not in url:
+        if "2026_11_01-2026_11_07" in url and "/@@download/file" not in url:
             _xlsx_semanal(destino, [])
             return True
         return False
     monkeypatch.setattr(baixar, "baixar", falso_baixar)
     r = baixar.baixar_semanais(tmp_path, dt.date(2026, 10, 31), hoje=dt.date(2026, 11, 14))
     assert [x.name for x in r] == ["semanal-2026-11-07.xlsx"]
-    assert not any("2026-10-18" in u for u in pedidos)       # semanas dentro do mês já publicado não são pedidas
+    assert not any("2026_10_18" in u for u in pedidos)       # semanas dentro do mês já publicado não são pedidas
 
 
 def test_semanal_com_colunas_desconhecidas_e_ignorado_sem_derrubar(tmp_path):

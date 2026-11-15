@@ -33,7 +33,7 @@ _RE_MENSAL = re.compile(r"/shpc/dsan/(\d{4})/([^/?#\"']+)$", re.I)
 # Preços SEMANAIS (um .xlsx por semana, domingo a sábado, publicado na sexta). Cobrem as semanas depois do último mês publicado.
 PAGINA_LPC = "https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos"
 PAGINAS_SEMANAIS = (PAGINA_LPC + "/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas",)
-URL_SEMANAL = PAGINA_LPC + "/arquivos-lpc/{ano}/revendas_lpc_{ini}_{fim}.xlsx"
+URL_SEMANAL = PAGINA_LPC + "/arquivos-lpc/{ano}/revendas_lpc_{ini}-{fim}.xlsx"   # nome real: revendas_lpc_2026_11_08-2026_11_14.xlsx
 _RE_SEMANAL = re.compile(r"revendas[_-]lpc[_-](\d{4})[-._](\d{2})[-._](\d{2})[_-](\d{4})[-._](\d{2})[-._](\d{2})\.xlsx", re.I)
 
 CABECALHO = {"User-Agent": "Mozilla/5.0 (compatible; anp-mapa/1.0; +https://github.com/RodrigoAiosa/anp)"}
@@ -214,7 +214,7 @@ def candidatos_semanais(hoje: dt.date | None = None, semanas: int = 10) -> dict[
     for k in range(semanas):
         f = fim - dt.timedelta(days=7 * k)
         i = f - dt.timedelta(days=6)
-        saida[f] = [URL_SEMANAL.format(ano=a, ini=i.isoformat(), fim=f.isoformat()) for a in sorted({i.year, f.year})]
+        saida[f] = [URL_SEMANAL.format(ano=a, ini=i.strftime("%Y_%m_%d"), fim=f.strftime("%Y_%m_%d")) for a in sorted({i.year, f.year})]
     return saida
 
 

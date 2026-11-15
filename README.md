@@ -120,7 +120,7 @@ No campo "Encontrar", ao digitar 3 letras ou mais (ou apertar Enter), os endere�
 ## Preços sempre recentes (semanais + atualização automática)
 
 - Os arquivos **mensais** da ANP só saem depois do fim do mês. Para cobrir as semanas seguintes, o build também baixa os
-  **semanais** (`revendas_lpc_AAAA-MM-DD_AAAA-MM-DD.xlsx`, domingo a sábado, publicados na sexta) das semanas que terminam depois
+  **semanais** (`revendas_lpc_AAAA_MM_DD-AAAA_MM_DD.xlsx`, domingo a sábado, publicados na sexta) das semanas que terminam depois
   do último mês publicado (variáveis `SEMANAIS=0` para desligar e `SEMANAS`, padrão 8). Se a ANP não responder ou mudar o
   layout, o mapa continua com os mensais. Entre mensal e semanal, vale o preço de coleta mais recente de cada posto.
 - O workflow **Atualização semanal dos preços** (sábado e, de reserva, quarta) faz um commit vazio na `main`; a Vercel refaz o
