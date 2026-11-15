@@ -136,7 +136,7 @@ def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
         "revenda": ("REVENDA",), "cnpj": ("CNPJ DA REVENDA", "CNPJ"),
         "rua": ("NOME DA RUA",), "numero": ("NUMERO RUA",), "complemento": ("COMPLEMENTO",),
         "bairro": ("BAIRRO",), "cep": ("CEP",), "produto": ("PRODUTO",),
-        "data": ("DATA DA COLETA", "DATA"), "preco": ("VALOR DE VENDA",),
+        "data": ("DATA DA COLETA", "DATA"), "preco": ("VALOR DE VENDA", "PRECO DE REVENDA", "PRECO REVENDA", "PRECO DE VENDA", "VALOR DE REVENDA"),
         "bandeira": ("BANDEIRA",),
     }
     for p in caminhos:
@@ -150,6 +150,9 @@ def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
             bruto = _ler_csv(p, usecols=lambda c: chave_texto(c) not in _DESCARTAR_PRECOS)
         df = _renomear(bruto, regras)
         faltam = {"uf", "municipio", "cnpj", "produto", "data", "preco"} - set(df.columns)
+        if faltam and p.suffix.lower() == ".xlsx":      # semanal é complemento: avisa, mostra as colunas e segue
+            print(f"  (ignorei {p.name}: faltam {sorted(faltam)}; colunas lidas: {list(bruto.columns)})", file=sys.stderr)
+            continue
         if faltam:
             raise ValueError(f"{p.name}: faltam colunas {sorted(faltam)}: layout da ANP mudou?")
         for c in ("revenda", "rua", "numero", "bairro", "cep", "bandeira"):

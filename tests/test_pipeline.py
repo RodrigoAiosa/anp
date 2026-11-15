@@ -314,3 +314,21 @@ def test_baixar_semanais_pega_so_as_depois_do_ultimo_mes(tmp_path, monkeypatch):
     r = baixar.baixar_semanais(tmp_path, dt.date(2026, 10, 31), hoje=dt.date(2026, 11, 14))
     assert [x.name for x in r] == ["semanal-2026-11-07.xlsx"]
     assert not any("2026-10-18" in u for u in pedidos)       # semanas dentro do mês já publicado não são pedidas
+
+
+def test_semanal_com_colunas_desconhecidas_e_ignorado_sem_derrubar(tmp_path):
+    from openpyxl import Workbook
+    wb = Workbook(); ws = wb.active
+    ws.append(["ESTADO - SIGLA", "MUNICÍPIO", "CNPJ DA REVENDA", "PRODUTO", "DATA DA COLETA", "COLUNA NOVA"])
+    ws.append(["SP", "SAO PAULO", "01234567000199", "GASOLINA", "03/11/2026", 6.2])
+    novo = tmp_path / "novo.xlsx"; wb.save(novo)
+    csv_ = tmp_path / "p.csv"
+    csv_.write_text("ESTADO - SIGLA;MUNICÍPIO;REVENDA;CNPJ DA REVENDA;PRODUTO;DATA DA COLETA;VALOR DE VENDA\n"
+                    "SP;SAO PAULO;POSTO A;01234567000199;GASOLINA;28/10/2026;6,50\n", encoding="utf-8")
+    assert len(tratar.ler_precos([novo, csv_])) == 1
+    # e o nome alternativo do preço é aceito
+    wb2 = Workbook(); w2 = wb2.active
+    w2.append(["ESTADO - SIGLA", "MUNICÍPIO", "CNPJ DA REVENDA", "PRODUTO", "DATA DA COLETA", "PREÇO DE REVENDA"])
+    w2.append(["SP", "SAO PAULO", "01234567000199", "GASOLINA", "03/11/2026", 6.2])
+    alt = tmp_path / "alt.xlsx"; wb2.save(alt)
+    assert tratar.ler_precos([alt]).iloc[0]["preco"] == 6.2
