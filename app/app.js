@@ -1156,11 +1156,40 @@
       this.setAttribute("aria-expanded", rec ? "false" : "true");
       ajustar();
     });
-    $("#alternar-painel").addEventListener("click", function () {
+    var botaoPainel = $("#alternar-painel");
+    var fecharPainelMovel = function () {
+      document.body.classList.remove("painel-aberto");
+      botaoPainel.textContent = "Filtros";
+      ajustar();
+    };
+    botaoPainel.addEventListener("click", function () {
       var ab = document.body.classList.toggle("painel-aberto");
       this.textContent = ab ? "Mapa" : "Filtros";
       ajustar();
     });
+    // Celular: arrastar o menu de filtros para a esquerda recolhe e devolve o mapa.
+    (function () {
+      var painel = $("#painel"), t0 = null;
+      var rolaLado = function (el) {   // toque começou em algo que rola na horizontal ou é um controle de arrastar
+        for (; el && el !== painel; el = el.parentNode) {
+          if (el.nodeType !== 1) continue;
+          if (el.matches("input[type=range], .deslizante, [data-sem-gesto]")) return true;
+          if (el.scrollWidth > el.clientWidth + 2 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)) return true;
+        }
+        return false;
+      };
+      painel.addEventListener("touchstart", function (e) {
+        if (e.touches.length !== 1 || !document.body.classList.contains("painel-aberto") || rolaLado(e.target)) { t0 = null; return; }
+        t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }, { passive: true });
+      painel.addEventListener("touchend", function (e) {
+        if (!t0) return;
+        var t = e.changedTouches[0], dx = t.clientX - t0.x, dy = t.clientY - t0.y;
+        t0 = null;
+        if (dx < -60 && Math.abs(dx) > 1.5 * Math.abs(dy)) fecharPainelMovel();
+      }, { passive: true });
+      painel.addEventListener("touchcancel", function () { t0 = null; }, { passive: true });
+    })();
   }
 
   // --------------------------------------------------------------- iniciar
