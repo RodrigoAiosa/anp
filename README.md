@@ -115,3 +115,13 @@ os postos ficam no centro do município. Para pular a API: `SEM_API_COORDENADAS=
 ## Busca por endereço e lugar
 
 No campo "Encontrar", ao digitar 3 letras ou mais (ou apertar Enter), os endereços e lugares do OpenStreetMap (Nominatim) aparecem para escolher, por exemplo "MASP". Escolher um deles marca o pino e lista os postos num raio de 1 a 30 km. Os municípios e postos já carregados continuam aparecendo na hora, acima dos endereços.
+
+
+## Preços sempre recentes (semanais + atualização automática)
+
+- Os arquivos **mensais** da ANP só saem depois do fim do mês. Para cobrir as semanas seguintes, o build também baixa os
+  **semanais** (`revendas_lpc_AAAA-MM-DD_AAAA-MM-DD.xlsx`, domingo a sábado, publicados na sexta) das semanas que terminam depois
+  do último mês publicado (variáveis `SEMANAIS=0` para desligar e `SEMANAS`, padrão 8). Se a ANP não responder ou mudar o
+  layout, o mapa continua com os mensais. Entre mensal e semanal, vale o preço de coleta mais recente de cada posto.
+- O workflow **Atualização semanal dos preços** (sábado e, de reserva, quarta) faz um commit vazio na `main`; a Vercel refaz o
+  build e baixa os dados novos. O GLP (botijão de 13 kg) já vem dos arquivos mensais e semanais.

@@ -1,0 +1,21 @@
+# Atualiza o mapa toda semana: a ANP publica os preços semanais na sexta; este workflow faz um commit
+# vazio na main, a Vercel (integrada ao GitHub) refaz o build e o build baixa os dados mais novos.
+name: Atualização semanal dos preços
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 12 * * 6"   # sábado, 09:00 de Brasília (a ANP publica na sexta)
+    - cron: "0 12 * * 3"   # quarta: segunda chance se a publicação atrasou
+permissions:
+  contents: write
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Commit vazio para disparar o deploy
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "Atualização semanal dos preços da ANP ($(date -u +%F))"
+          git push

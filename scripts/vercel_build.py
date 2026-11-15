@@ -22,7 +22,7 @@ RAIZ = Path(__file__).resolve().parent.parent
 
 
 def garantir_dependencias():
-    faltam = [m for m in ("pandas", "requests") if importlib.util.find_spec(m) is None]
+    faltam = [m for m in ("pandas", "requests", "openpyxl") if importlib.util.find_spec(m) is None]
     if faltam:
         print("Instalando:", ", ".join(faltam), flush=True)
         subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "--user",

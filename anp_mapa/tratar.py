@@ -1,6 +1,7 @@
 """Leitura e limpeza dos CSVs da ANP (cadastro de postos e preços LPC)."""
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -42,6 +43,38 @@ def _ler_csv(caminho: Path, **kw) -> pd.DataFrame:
         except UnicodeDecodeError as e:
             erro = e
     raise erro  # type: ignore[misc]
+
+
+def _celula_texto(v) -> str:
+    if v is None or (isinstance(v, float) and v != v):
+        return ""
+    if isinstance(v, float) and v.is_integer():          # CEP/CNPJ lidos como número
+        return str(int(v))
+    return str(v).strip()
+
+
+def _ler_xlsx(caminho: Path) -> pd.DataFrame:
+    """Planilha semanal da ANP (revendas_lpc_*.xlsx): acha a linha do cabeçalho e devolve tudo
+    como texto, menos VALOR e DATA (que ficam como a planilha trouxe: número/data ou texto)."""
+    bruto = pd.read_excel(caminho, header=None, dtype=object, engine="openpyxl")
+    topo = None
+    for i in range(min(len(bruto), 60)):
+        cel = [chave_texto(x) for x in bruto.iloc[i].tolist() if isinstance(x, str)]
+        if any("CNPJ" in c for c in cel) and any(c == "PRODUTO" for c in cel):
+            topo = i
+            break
+    if topo is None:
+        raise ValueError(f"{caminho.name}: não achei o cabeçalho (CNPJ/PRODUTO): layout da ANP mudou?")
+    df = bruto.iloc[topo + 1:].copy()
+    df.columns = [str(c) for c in bruto.iloc[topo].tolist()]
+    df = df.loc[:, [c for c in df.columns if c != "nan" and chave_texto(c) not in _DESCARTAR_PRECOS]]
+    df = df.loc[:, ~df.columns.duplicated()]
+    for c in df.columns:
+        n = chave_texto(c)
+        if n.startswith("VALOR") or n.startswith("DATA"):
+            continue
+        df[c] = df[c].map(_celula_texto)
+    return df.dropna(how="all").reset_index(drop=True)
 
 
 def _renomear(df: pd.DataFrame, regras: dict[str, tuple[str, ...]]) -> pd.DataFrame:
@@ -86,7 +119,7 @@ def ler_cadastro(caminho: Path) -> pd.DataFrame:
         "endereco": df["endereco"].str.replace(r"\s+", " ", regex=True).str.strip(),
         "complemento": df["complemento"].str.strip(),
         "bairro": df["bairro"].str.strip(),
-        "cep": df["cep"].str.replace(r"\D", "", regex=True),
+        "cep": df["cep"].str.replace(r"\D", "", regex=True).map(lambda c: c.zfill(8) if c else c),
         "uf": df["uf"].str.strip().str.upper(),
         "municipio": df["municipio"].str.strip(),
     })
@@ -107,14 +140,25 @@ def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
         "bandeira": ("BANDEIRA",),
     }
     for p in caminhos:
-        df = _renomear(_ler_csv(p, usecols=lambda c: chave_texto(c) not in _DESCARTAR_PRECOS), regras)
+        if p.suffix.lower() == ".xlsx":
+            try:
+                bruto = _ler_xlsx(p)
+            except Exception as e:  # noqa: BLE001 - semanal é complemento: não derruba o mapa
+                print(f"  (ignorei {p.name}: {e})", file=sys.stderr)
+                continue
+        else:
+            bruto = _ler_csv(p, usecols=lambda c: chave_texto(c) not in _DESCARTAR_PRECOS)
+        df = _renomear(bruto, regras)
         faltam = {"uf", "municipio", "cnpj", "produto", "data", "preco"} - set(df.columns)
         if faltam:
             raise ValueError(f"{p.name}: faltam colunas {sorted(faltam)}: layout da ANP mudou?")
         for c in ("revenda", "rua", "numero", "bairro", "cep", "bandeira"):
             if c not in df.columns:
                 df[c] = ""
+        df["data"] = pd.to_datetime(df["data"], dayfirst=True, errors="coerce")
         partes.append(df)
+    if not partes:
+        raise ValueError("nenhum arquivo de preços legível")
     df = pd.concat(partes, ignore_index=True)
 
     prod = df["produto"].map(lambda x: PRODUTOS.get(chave_texto(x).replace("  ", " ")))
@@ -125,7 +169,7 @@ def ler_precos(caminhos: list[Path]) -> pd.DataFrame:
         "municipio": df["municipio"].str.strip(),
         "endereco": (df["rua"].str.strip() + ", " + df["numero"].str.strip()).str.strip(", "),
         "bairro": df["bairro"].str.strip(),
-        "cep": df["cep"].str.replace(r"\D", "", regex=True),
+        "cep": df["cep"].str.replace(r"\D", "", regex=True).map(lambda c: c.zfill(8) if c else c),
         "bandeira": df["bandeira"].str.strip(),
         "produto": prod,
         "data": pd.to_datetime(df["data"], dayfirst=True, errors="coerce"),

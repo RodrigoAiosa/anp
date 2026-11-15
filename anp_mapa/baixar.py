@@ -30,6 +30,12 @@ GRUPOS_MENSAIS = ("gasolina-etanol", "diesel-gnv", "glp")
 PAGINA_SERIE = "https://www.gov.br/anp/pt-br/centrais-de-conteudo/dados-abertos/serie-historica-de-precos-de-combustiveis"
 _RE_MENSAL = re.compile(r"/shpc/dsan/(\d{4})/([^/?#\"']+)$", re.I)
 
+# Preços SEMANAIS (um .xlsx por semana, domingo a sábado, publicado na sexta). Cobrem as semanas depois do último mês publicado.
+PAGINA_LPC = "https://www.gov.br/anp/pt-br/assuntos/precos-e-defesa-da-concorrencia/precos"
+PAGINAS_SEMANAIS = (PAGINA_LPC + "/levantamento-de-precos-de-combustiveis-ultimas-semanas-pesquisadas",)
+URL_SEMANAL = PAGINA_LPC + "/arquivos-lpc/{ano}/revendas_lpc_{ini}_{fim}.xlsx"
+_RE_SEMANAL = re.compile(r"revendas_lpc_(\d{4})-(\d{2})-(\d{2})_(\d{4})-(\d{2})-(\d{2})\.xlsx", re.I)
+
 CABECALHO = {"User-Agent": "Mozilla/5.0 (compatible; anp-mapa/1.0; +https://github.com/RodrigoAiosa/anp)"}
 
 
@@ -171,6 +177,98 @@ def baixar_tudo(pasta: Path, semestres: int = 2) -> tuple[Path, list[Path]]:
         raise RuntimeError("Arquivo de cadastro da ANP não encontrado.")
     print("Preços (LPC):")
     precos = baixar_precos(pasta, semestres)
+    import os
+    if os.environ.get("SEMANAIS", "1") != "0":
+        print("Preços semanais (semanas depois do último mês publicado):")
+        try:
+            precos += baixar_semanais(pasta, fim_do_ultimo_mes(precos), maximo=int(os.environ.get("SEMANAS", "8")))
+        except Exception as e:  # noqa: BLE001 - os semanais são um complemento
+            print(f"  Sem preços semanais: {e}", file=sys.stderr)
     if not precos:
         print("  Nenhum arquivo de preços baixado: o mapa sairá sem o ranking.", file=sys.stderr)
     return cadastro, precos
+
+
+# ----------------------------------------------------------------------------- semanais
+def descobrir_semanais(html: str) -> dict[dt.date, str]:
+    """Links dos arquivos semanais numa página da ANP: {último dia da semana: url do arquivo}."""
+    achados: dict[dt.date, str] = {}
+    for href in set(re.findall(r'href="([^"]+)"', html)):
+        m = _RE_SEMANAL.search(href)
+        if not m:
+            continue
+        try:
+            fim = dt.date(int(m.group(4)), int(m.group(5)), int(m.group(6)))
+        except ValueError:
+            continue
+        url = href if href.startswith("http") else "https://www.gov.br" + href if href.startswith("/") else href
+        url = re.sub(r"/(view|@@download/file)/?$", "", url)        # a página de visualização vira o arquivo
+        achados[fim] = url
+    return achados
+
+
+def candidatos_semanais(hoje: dt.date | None = None, semanas: int = 10) -> dict[dt.date, list[str]]:
+    """Plano B, sem ler a página: monta os nomes das últimas semanas (domingo a sábado)."""
+    hoje = hoje or dt.date.today()
+    fim = hoje - dt.timedelta(days=(hoje.weekday() + 2) % 7)        # sábado mais recente (<= hoje)
+    saida: dict[dt.date, list[str]] = {}
+    for k in range(semanas):
+        f = fim - dt.timedelta(days=7 * k)
+        i = f - dt.timedelta(days=6)
+        saida[f] = [URL_SEMANAL.format(ano=a, ini=i.isoformat(), fim=f.isoformat()) for a in sorted({i.year, f.year})]
+    return saida
+
+
+def _eh_xlsx(caminho: Path) -> bool:
+    try:
+        with open(caminho, "rb") as f:
+            return f.read(4) == b"PK\x03\x04"
+    except OSError:
+        return False
+
+
+def fim_do_ultimo_mes(arquivos: list[Path]) -> dt.date | None:
+    """Último dia do mês mais recente entre os arquivos mensais baixados (precos-AAAA-MM-grupo.csv)."""
+    meses = []
+    for a in arquivos:
+        m = re.match(r"precos-(\d{4})-(\d{2})-", a.name)
+        if m:
+            meses.append((int(m.group(1)), int(m.group(2))))
+    if not meses:
+        return None
+    ano, mes = max(meses)
+    return (dt.date(ano + (mes == 12), mes % 12 + 1, 1) - dt.timedelta(days=1))
+
+
+def baixar_semanais(pasta: Path, depois_de: dt.date | None, hoje: dt.date | None = None, maximo: int = 8) -> list[Path]:
+    """Baixa os .xlsx semanais cuja semana termina depois de `depois_de` (os mais recentes primeiro).
+    Nunca falha o build: sem os semanais, o mapa fica com os preços mensais."""
+    hoje = hoje or dt.date.today()
+    urls: dict[dt.date, list[str]] = {}
+    paginas = list(PAGINAS_SEMANAIS) + [PAGINA_LPC + f"/arquivos-lpc/{a}" for a in sorted({hoje.year, (hoje - dt.timedelta(days=45)).year}, reverse=True)]
+    for pag in paginas:
+        try:
+            r = requests.get(pag, headers=CABECALHO, timeout=60)
+            r.raise_for_status()
+            for fim, u in descobrir_semanais(r.text).items():
+                urls.setdefault(fim, [u])
+        except requests.RequestException as e:
+            print(f"  (página dos preços semanais indisponível: {pag.rsplit('/', 1)[-1]}: {e})", file=sys.stderr)
+    for fim, lst in candidatos_semanais(hoje).items():          # completa com o padrão de nome
+        urls.setdefault(fim, lst)
+    alvo = sorted((f for f in urls if depois_de is None or f > depois_de), reverse=True)[:maximo]
+    achados: list[Path] = []
+    for fim in alvo:
+        destino = pasta / f"semanal-{fim.isoformat()}.xlsx"
+        for url in dict.fromkeys(urls[fim] + [urls[fim][0] + "/@@download/file"]):
+            try:
+                if baixar(url, destino, tentativas=2):
+                    if _eh_xlsx(destino):
+                        achados.append(destino)
+                        break
+                    print(f"  (não é um .xlsx: {url})", file=sys.stderr)
+                    destino.unlink(missing_ok=True)
+            except RuntimeError as e:
+                print(f"  ({e})", file=sys.stderr)
+    print(f"  semanais: {len(achados)} arquivo(s) depois de {depois_de or 'sempre'}")
+    return achados
