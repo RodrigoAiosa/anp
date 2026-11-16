@@ -880,12 +880,14 @@
   function fecharPerto() {
     ctxPerto = null; $("#secao-perto").hidden = true;
     var sem = $("#perto-sem"); if (sem) { sem.hidden = true; sem.innerHTML = ""; }
+    clearTimeout(timerSem); if (camadaSem) camadaSem.clearLayers();
     if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
     [pino, circuloRaio, destaquePerto].forEach(function (l) { if (l && mapa.hasLayer(l)) mapa.removeLayer(l); });
     pino = null; circuloRaio = null; destaquePerto = null; selPerto = null; marcasNum = {}; anelSel = null;
   }
 
   // ---------- busca por raio (cada posto tem coordenada: distância em linha reta a partir de um pino)
+  var camadaSem = null, cacheSem = {}, timerSem = 0;   // postos sem coordenada da ANP, localizados pelo endereço (OpenStreetMap)
   var raioKm = 5, pino = null, circuloRaio = null, rendSvg = null, destaquePerto = null, tokenPerto = 0, rafPerto = 0, selPerto = null, marcasNum = {}, anelSel = null;
 
   function posicaoDoCEP(m, cep) {
@@ -1013,6 +1015,7 @@
   // Referência: CEP dos postos com posição exata que já estão no raio; entra quem tem CEP a até 3000 de algum deles.
   function renderSemLocal(c, tk) {
     var box = $("#perto-sem"); box.hidden = true; box.innerHTML = "";
+    clearTimeout(timerSem); if (camadaSem) camadaSem.clearLayers();
     var ref = [], cont = {}, melhor = null;
     for (var k = 0; k < c.itens.length && ref.length < 12; k++) {
       var i = c.itens[k].i; if (!PT.e[i]) continue;
@@ -1039,22 +1042,81 @@
       lista.sort(function (a, b) { return a.dif - b.dif; });
       var np = Math.max(1, PT.prod.length), mostra = lista.slice(0, 8);
       box.innerHTML = '<div style="margin:14px 0 6px;font:700 12px/1.2 Montserrat,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Sem localização exata · ' + fmtN(lista.length) + "</div>" +
-        '<div class="nota" style="margin:0 0 8px">A ANP não informa a posição destes postos, por isso não entram no raio. Eles têm CEP próximo ao dos postos acima, então devem ficar por aqui. Use o endereço para achar o ponto exato.</div>' +
+        '<div class="nota" style="margin:0 0 8px">A ANP não informa a posição destes postos, por isso não entram no raio. Eles têm CEP próximo ao dos postos acima. O marcador amarelo “?” no mapa foi achado pelo endereço no OpenStreetMap, então a posição é aproximada. Clique no item para ir até ele.</div>' +
         mostra.map(function (x) {
           var p = x.p, pr = pi >= 0 ? PT.preco[x.j * np + pi] : NaN;
           var end = [p[2], p[3], mun.nome, melhor.uf, "Brasil"].filter(Boolean).join(", ");
           return '<div class="item-lista perto-item sem-local" data-cnpj="' + esc(p[5]) + '"><span class="perto-pos">?</span><span style="min-width:0">' +
             '<span class="top3-nome" style="white-space:normal">' + esc(p[0]) + "</span>" +
             '<span class="top3-sub" style="white-space:normal">' + esc([p[1], p[2], p[3]].filter(Boolean).join(" · ")) + (p[4] ? " · CEP " + esc(p[4]) : "") +
-            ' · <a class="sem-maps" href="' + mapsLink(end) + '" target="_blank" rel="noopener">Ver no Google Maps</a></span></span>' +
+            '<span class="sem-dist"></span> · <a class="sem-maps" href="' + mapsLink(end) + '" target="_blank" rel="noopener">Ver no Google Maps</a></span></span>' +
             '<span class="top3-preco" style="color:var(--text)">' + (pr === pr ? fmtPreco(pr, estado.prod) : "") + "</span></div>";
         }).join("") +
         (lista.length > mostra.length ? '<div class="nota" style="margin:6px 0 0">e mais ' + fmtN(lista.length - mostra.length) + " com CEP parecido. Filtre pelo município para ver todos.</div>" : "");
       box.hidden = false;
       $$("#perto-sem .sem-local").forEach(function (el) {
-        el.addEventListener("click", function (e) { if (e.target.closest("a")) return; abrirFichaPosto(el.dataset.cnpj); });
+        el.addEventListener("click", function (e) {
+          if (e.target.closest("a")) return;
+          var ac = cacheSem[el.dataset.cnpj];
+          if (ac) mapa.flyTo([ac.la, ac.lo], Math.max(mapa.getZoom(), 17), { animate: !MENOS_MOVIMENTO, duration: 0.6 });
+          abrirFichaPosto(el.dataset.cnpj);
+        });
       });
+      localizarSemLocal(c, tk, mostra.slice(0, 6), mun, melhor.uf);
     });
+  }
+
+  // Põe no mapa, pelo endereço (Nominatim/OpenStreetMap), os postos que a ANP não localizou.
+  // Os já achados vêm do cache; os demais só são consultados depois que o pino para de mexer (1 pedido por segundo).
+  function enderecoParaBusca(end) {   // "AVENIDA X, 725, ANEXO" -> { street: "725 Avenida X", rua: "Avenida X" }
+    var t = String(end || "").split(",").map(function (x) { return x.trim(); }), rua = (t[0] || "").toLowerCase().replace(/(^|\s)\S/g, function (m) { return m.toUpperCase(); });
+    var num = (t[1] || "").replace(/\./g, "").match(/^\d+/);
+    return { street: (num ? num[0] + " " : "") + rua, rua: rua, numero: !!num };
+  }
+  function marcarSem(x, a, c) {
+    if (!camadaSem) camadaSem = L.layerGroup().addTo(mapa);
+    var m = L.marker([a.la, a.lo], { keyboard: false, zIndexOffset: 700, title: x.p[0],
+      icon: L.divIcon({ className: "sem-pino", html: "<span>?</span>", iconSize: [24, 24] }) }).addTo(camadaSem);
+    m.bindTooltip(x.p[0] + (a.prec === "rua" ? " (pela rua, sem o número)" : ""), { direction: "top", offset: [0, -10] });
+    m.on("click", function () { abrirFichaPosto(x.p[5]); });
+    var el = document.querySelector('#perto-sem .sem-local[data-cnpj="' + x.p[5] + '"] .sem-dist');
+    if (el) {
+      var d = km(c.o.lat, c.o.lon, a.la, a.lo);
+      el.textContent = " · ≈ " + (d < 1 ? Math.max(10, Math.round(d * 100) * 10) + " m" : d.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " km") + " do pino" + (a.prec === "rua" ? " (pela rua)" : "");
+    }
+  }
+  function localizarSemLocal(c, tk, itens, mun, uf) {
+    var pend = [];
+    itens.forEach(function (x) {
+      var a = cacheSem[x.p[5]];
+      if (a) marcarSem(x, a, c); else if (a === undefined) pend.push(x);
+    });
+    if (!pend.length) return;
+    timerSem = setTimeout(function () {
+      var seq = Promise.resolve();
+      pend.forEach(function (x) {
+        seq = seq.then(function () {
+          if (tk !== tokenPerto || ctxPerto !== c) return;
+          var e = enderecoParaBusca(x.p[2]), base = { city: mun.nome, state: uf };
+          var ok = function (l) {
+            for (var i = 0; i < l.length; i++) {
+              var la = parseFloat(l[i].lat), lo = parseFloat(l[i].lon);
+              if (dentroDoBrasil(la, lo) && km(mun.lat, mun.lon, la, lo) <= CEP_MAX_KM) return { la: la, lo: lo };
+            }
+            return null;
+          };
+          var busca = function (street, prec) {
+            return nominatimBusca(Object.assign({ street: street }, base)).then(function (l) { var r = ok(l); return r ? { la: r.la, lo: r.lo, prec: prec } : null; });
+          };
+          return busca(e.street, e.numero ? "numero" : "rua")
+            .then(function (r) { return r || (e.numero ? busca(e.rua, "rua") : null); })
+            .then(function (r) {
+              cacheSem[x.p[5]] = r || null;
+              if (r && tk === tokenPerto && ctxPerto === c) marcarSem(x, r, c);
+            });
+        });
+      });
+    }, 700);
   }
 
   // ------------------------------------------------ meus lugares (favoritos e buscas recentes)
