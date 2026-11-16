@@ -1049,12 +1049,30 @@
           return '<div class="item-lista perto-item sem-local" data-cnpj="' + esc(p[5]) + '"><span class="perto-pos">?</span><span style="min-width:0">' +
             '<span class="top3-nome" style="white-space:normal">' + esc(p[0]) + "</span>" +
             '<span class="top3-sub" style="white-space:normal">' + esc([p[1], p[2], p[3]].filter(Boolean).join(" · ")) + (p[4] ? " · CEP " + esc(p[4]) : "") +
-            '<span class="sem-dist"></span> · <a class="sem-maps" href="' + mapsLink(end) + '" target="_blank" rel="noopener">Ver no Google Maps</a></span></span>' +
+            '<span class="sem-dist"></span> · <a class="sem-maps" href="' + mapsLink(end) + '" target="_blank" rel="noopener">Ver no Google Maps</a> · <a class="sem-colar-ab" href="#">Colar link do Maps</a>' +
+            '<input class="sem-colar" type="text" hidden autocomplete="off" placeholder="Cole aqui o link do posto no Google Maps" aria-label="Link do Google Maps do posto"></span></span>' +
             '<span class="top3-preco" style="color:var(--text)">' + (pr === pr ? fmtPreco(pr, estado.prod) : "") + "</span></div>";
         }).join("") +
         (lista.length > mostra.length ? '<div class="nota" style="margin:6px 0 0">e mais ' + fmtN(lista.length - mostra.length) + " com CEP parecido. Filtre pelo município para ver todos.</div>" : "");
       box.hidden = false;
       $$("#perto-sem .sem-local").forEach(function (el) {
+        var campo = el.querySelector(".sem-colar"), cnpj = el.dataset.cnpj;
+        el.querySelector(".sem-colar-ab").addEventListener("click", function (e) { e.preventDefault(); campo.hidden = !campo.hidden; if (!campo.hidden) campo.focus(); });
+        campo.addEventListener("click", function (e) { e.stopPropagation(); });
+        var aplicar = function () {
+          var v = campo.value.trim(); if (!v) return;
+          var q = coordDoLink(v);
+          if (!q || !dentroDoBrasil(q.la, q.lo) || km(mun.lat, mun.lon, q.la, q.lo) > CEP_MAX_KM) {
+            campo.setCustomValidity(/goo\.gl|maps\.app/i.test(v) ? "Link curto não traz a coordenada: abra-o e copie o endereço da barra do navegador." : "Não achei latitude/longitude neste link, ou ela está longe do município.");
+            campo.reportValidity(); return;
+          }
+          campo.setCustomValidity("");
+          gravarPos(cnpj, q.la, q.lo); cacheSem[cnpj] = { la: q.la, lo: q.lo, prec: "manual" };
+          atualizarRaio(false);
+          mapa.flyTo([q.la, q.lo], Math.max(mapa.getZoom(), 17), { animate: !MENOS_MOVIMENTO, duration: 0.6 });
+        };
+        campo.addEventListener("input", function () { campo.setCustomValidity(""); if (coordDoLink(campo.value)) aplicar(); });
+        campo.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); aplicar(); } });
         el.addEventListener("click", function (e) {
           if (e.target.closest("a")) return;
           var ac = cacheSem[el.dataset.cnpj];
@@ -1064,6 +1082,18 @@
       });
       localizarSemLocal(c, tk, mostra.slice(0, 6), mun, melhor.uf);
     });
+  }
+
+  // Posição informada pelo usuário (colando um link do Google Maps): fica no navegador (anp.posicoes.v1) e vale mais que a busca pelo endereço.
+  var CHAVE_POS = "anp.posicoes.v1", posSalvas = {};
+  try { posSalvas = JSON.parse(localStorage.getItem(CHAVE_POS) || "{}") || {}; } catch (e) { posSalvas = {}; }
+  function gravarPos(cnpj, la, lo) { posSalvas[cnpj] = [la, lo]; try { localStorage.setItem(CHAVE_POS, JSON.stringify(posSalvas)); } catch (e) { /* ok */ } }
+  function coordDoLink(t) {   // @lat,lon  |  !3dlat!4dlon  |  ?q=lat,lon  |  "lat, lon" solto
+    t = String(t || "").trim(); try { t = decodeURIComponent(t); } catch (e) { /* ok */ }
+    var N = "(-?\\d{1,3}\\.\\d+)", r =
+      t.match(new RegExp("@" + N + "," + N)) || t.match(new RegExp("!3d" + N + "!4d" + N)) ||
+      t.match(new RegExp("[?&](?:q|query|ll|center|destination)=" + N + "\\s*,\\s*" + N)) || t.match(new RegExp("^" + N + "\\s*[,;]\\s*" + N + "$"));
+    return r ? { la: parseFloat(r[1]), lo: parseFloat(r[2]) } : null;
   }
 
   // Põe no mapa, pelo endereço (Nominatim/OpenStreetMap), os postos que a ANP não localizou.
@@ -1077,17 +1107,19 @@
     if (!camadaSem) camadaSem = L.layerGroup().addTo(mapa);
     var m = L.marker([a.la, a.lo], { keyboard: false, zIndexOffset: 700, title: x.p[0],
       icon: L.divIcon({ className: "sem-pino", html: "<span>?</span>", iconSize: [24, 24] }) }).addTo(camadaSem);
-    m.bindTooltip(x.p[0] + (a.prec === "rua" ? " (pela rua, sem o número)" : ""), { direction: "top", offset: [0, -10] });
+    m.bindTooltip(x.p[0] + (a.prec === "rua" ? " (pela rua, sem o número)" : a.prec === "manual" ? " (posição informada por você)" : ""), { direction: "top", offset: [0, -10] });
     m.on("click", function () { abrirFichaPosto(x.p[5]); });
     var el = document.querySelector('#perto-sem .sem-local[data-cnpj="' + x.p[5] + '"] .sem-dist');
     if (el) {
       var d = km(c.o.lat, c.o.lon, a.la, a.lo);
-      el.textContent = " · ≈ " + (d < 1 ? Math.max(10, Math.round(d * 100) * 10) + " m" : d.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " km") + " do pino" + (a.prec === "rua" ? " (pela rua)" : "");
+      el.textContent = " · ≈ " + (d < 1 ? Math.max(10, Math.round(d * 100) * 10) + " m" : d.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) + " km") + " do pino" + (a.prec === "rua" ? " (pela rua)" : a.prec === "manual" ? " (posição que você informou)" : "");
     }
   }
   function localizarSemLocal(c, tk, itens, mun, uf) {
     var pend = [];
     itens.forEach(function (x) {
+      var sv = posSalvas[x.p[5]];
+      if (sv) cacheSem[x.p[5]] = { la: sv[0], lo: sv[1], prec: "manual" };
       var a = cacheSem[x.p[5]];
       if (a) marcarSem(x, a, c); else if (a === undefined) pend.push(x);
     });
