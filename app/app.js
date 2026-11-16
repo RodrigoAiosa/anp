@@ -879,6 +879,7 @@
 
   function fecharPerto() {
     ctxPerto = null; $("#secao-perto").hidden = true;
+    var sem = $("#perto-sem"); if (sem) { sem.hidden = true; sem.innerHTML = ""; }
     if (markerBusca) { mapa.removeLayer(markerBusca); markerBusca = null; }
     [pino, circuloRaio, destaquePerto].forEach(function (l) { if (l && mapa.hasLayer(l)) mapa.removeLayer(l); });
     pino = null; circuloRaio = null; destaquePerto = null; selPerto = null; marcasNum = {}; anelSel = null;
@@ -983,6 +984,7 @@
     if (selPerto != null && !marcasNum[selPerto]) selPerto = null;   // o posto escolhido saiu da lista (raio menor ou pino movido)
     aplicarSelecaoPerto();
     $("#perto-mais").hidden = c.itens.length <= fatia.length;
+    renderSemLocal(c, tk);
     Promise.all(Object.keys(ufs).map(carregarUF)).then(function () {
       if (tk !== tokenPerto || ctxPerto !== c) return;
       var pi = PT.prod.indexOf(estado.prod), np = Math.max(1, PT.prod.length);
@@ -1003,6 +1005,54 @@
           abrirFichaPosto(PT.c[i]);
           mapa.flyTo([PT.lat[i], PT.lon[i]], Math.max(mapa.getZoom(), 15), { animate: !MENOS_MOVIMENTO, duration: 0.6 });
         });
+      });
+    });
+  }
+
+  // Postos que a ANP não localizou (aparecem no centro do município, fora de qualquer raio): lista à parte, pelo CEP.
+  // Referência: CEP dos postos com posição exata que já estão no raio; entra quem tem CEP a até 3000 de algum deles.
+  function renderSemLocal(c, tk) {
+    var box = $("#perto-sem"); box.hidden = true; box.innerHTML = "";
+    var ref = [], cont = {}, melhor = null;
+    for (var k = 0; k < c.itens.length && ref.length < 12; k++) {
+      var i = c.itens[k].i; if (!PT.e[i]) continue;
+      var key = PT.m[i]; cont[key] = (cont[key] || 0) + 1;
+      if (!melhor || cont[key] > cont[melhor.m]) melhor = { m: key, uf: PT.uf[PT.u[i]] };
+      ref.push({ m: key, i: i });
+    }
+    if (!melhor) return;
+    carregarUF(melhor.uf).then(function () {
+      if (tk !== tokenPerto || ctxPerto !== c) return;
+      var mun = cacheUF[melhor.uf].municipios.filter(function (x) { return x.ibge === melhor.m; })[0]; if (!mun) return;
+      var ceps = [];
+      ref.forEach(function (r) { if (r.m !== melhor.m) return; var a = idxPosto[PT.c[r.i]], cp = a && parseInt(a.p[4], 10); if (cp) ceps.push(cp); });
+      if (!ceps.length) return;
+      var pi = PT.prod.indexOf(estado.prod), lista = [];
+      mun.postos.forEach(function (p) {
+        if (p[7] != null) return;
+        var cp = parseInt(p[4], 10), j = PT.cnpjIdx[p[5]];
+        if (isNaN(cp) || j == null || filtro.ocultas[bandGrupo(PT.b[j])]) return;
+        var dif = Math.min.apply(null, ceps.map(function (x) { return Math.abs(x - cp); }));
+        if (dif <= 3000) lista.push({ p: p, dif: dif, j: j });
+      });
+      if (!lista.length) return;
+      lista.sort(function (a, b) { return a.dif - b.dif; });
+      var np = Math.max(1, PT.prod.length), mostra = lista.slice(0, 8);
+      box.innerHTML = '<div style="margin:14px 0 6px;font:700 12px/1.2 Montserrat,sans-serif;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)">Sem localização exata · ' + fmtN(lista.length) + "</div>" +
+        '<div class="nota" style="margin:0 0 8px">A ANP não informa a posição destes postos, por isso não entram no raio. Eles têm CEP próximo ao dos postos acima, então devem ficar por aqui. Use o endereço para achar o ponto exato.</div>' +
+        mostra.map(function (x) {
+          var p = x.p, pr = pi >= 0 ? PT.preco[x.j * np + pi] : NaN;
+          var end = [p[2], p[3], mun.nome, melhor.uf, "Brasil"].filter(Boolean).join(", ");
+          return '<div class="item-lista perto-item sem-local" data-cnpj="' + esc(p[5]) + '"><span class="perto-pos">?</span><span style="min-width:0">' +
+            '<span class="top3-nome" style="white-space:normal">' + esc(p[0]) + "</span>" +
+            '<span class="top3-sub" style="white-space:normal">' + esc([p[1], p[2], p[3]].filter(Boolean).join(" · ")) + (p[4] ? " · CEP " + esc(p[4]) : "") +
+            ' · <a class="sem-maps" href="' + mapsLink(end) + '" target="_blank" rel="noopener">Ver no Google Maps</a></span></span>' +
+            '<span class="top3-preco" style="color:var(--text)">' + (pr === pr ? fmtPreco(pr, estado.prod) : "") + "</span></div>";
+        }).join("") +
+        (lista.length > mostra.length ? '<div class="nota" style="margin:6px 0 0">e mais ' + fmtN(lista.length - mostra.length) + " com CEP parecido. Filtre pelo município para ver todos.</div>" : "");
+      box.hidden = false;
+      $$("#perto-sem .sem-local").forEach(function (el) {
+        el.addEventListener("click", function (e) { if (e.target.closest("a")) return; abrirFichaPosto(el.dataset.cnpj); });
       });
     });
   }

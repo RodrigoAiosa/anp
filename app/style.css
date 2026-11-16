@@ -931,3 +931,8 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 @media (prefers-reduced-motion: reduce) { .sel-perto .anel { animation: none; opacity: .9; } .sel-perto .anel.a2 { display: none; } }
 .perto-item.sel { border-color: #FFC107; background: rgba(255, 193, 7, .10); box-shadow: inset 3px 0 0 #FFC107; }
 .perto-item.sel .perto-pos { background: #FFC107; color: #1b1300; }
+
+/* postos sem coordenada na ANP: listados à parte pelo CEP */
+.sem-local .perto-pos { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1.5px var(--muted); }
+.sem-maps { color: var(--cor-azul); font-weight: 600; text-decoration: none; }
+.sem-maps:hover { text-decoration: underline; }

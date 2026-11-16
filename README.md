@@ -125,3 +125,7 @@ No campo "Encontrar", ao digitar 3 letras ou mais (ou apertar Enter), os endere�
   layout, o mapa continua com os mensais. Entre mensal e semanal, vale o preço de coleta mais recente de cada posto.
 - O workflow **Atualização semanal dos preços** (sábado e, de reserva, quarta) faz um commit vazio na `main`; a Vercel refaz o
   build e baixa os dados novos. O GLP (botijão de 13 kg) já vem dos arquivos mensais e semanais.
+
+## Postos sem coordenada na ANP
+
+Cerca de 15% dos postos não têm latitude/longitude na API da ANP e ficam no centro do município, fora de qualquer raio. Na busca por raio, o bloco **Sem localização exata** lista os postos do mesmo município cujo CEP é parecido (diferença de até 3000) com o dos postos do raio que têm posição exata, com o endereço e o link “Ver no Google Maps”. É uma aproximação por CEP, que não substitui a coordenada.
